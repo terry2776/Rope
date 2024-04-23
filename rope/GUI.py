@@ -1001,7 +1001,8 @@ class GUI(tk.Tk):
         try:
             img = torch.from_numpy(self.video_image).to('cuda')
             img = img.permute(2,0,1)
-            kpss = self.models.run_detect(img, max_num=50)
+            #kpss = self.models.run_detect(img, max_num=50)
+            kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0)
 
             ret = []
             for i in range(kpss.shape[0]):
