@@ -302,7 +302,7 @@ DEFAULT_DATA = {
 # Text Selection
 'DetectTypeTextSelInfoText':        'FACE DETECTION MODEL:\nSelect the face detection model. Mostly only subtle differences, but can significant differences when the face is at extreme angles or covered.',
 'DetectTypeTextSelMode':            'Retinaface',
-'DetectTypeTextSelModes':           ['Retinaface', 'Yolov8', 'SCRDF'],
+'DetectTypeTextSelModes':           ['Retinaface', 'Yolov8', 'SCRDF', 'Yunet'],
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',
 'PreviewModeTextSelModes':          ['Video', 'Image'],

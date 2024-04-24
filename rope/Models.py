@@ -21,6 +21,7 @@ class Models():
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
+        self.yunet_model = []
         self.resnet50_model, self.anchors  = [], []
         
         self.insight106_model = []
@@ -73,7 +74,13 @@ class Models():
                 self.yoloface_model = onnxruntime.InferenceSession('.\models\yoloface_8n.onnx', providers=self.providers)
         
             kpss = self.detect_yoloface(img, max_num=max_num, score=score)
+
+        elif detect_mode=='Yunet':
+            if not self.yunet_model:
+                self.yunet_model = cv2.FaceDetectorYN.create('.\models\yunet_n_640_640.onnx', '', (0, 0))
         
+            kpss = self.detect_yunet(img, max_num=max_num, score=score)
+
         return kpss
         
     def run_align(self, img):
@@ -89,6 +96,7 @@ class Models():
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
+        self.yunet_model = []
         self.resnet50_model = []
         self.insight106_model = []
         self.recognition_model = []
@@ -618,7 +626,55 @@ class Models():
             result.append(kps_list[r])
             
         return np.array(result)
+
+    def detect_yunet(self, img, max_num, score):
+
+        # Convert the tensor to a numpy array
+        numpy_image = img.detach().cpu().numpy()
+
+        # Convert the numpy array to a cv2 image
+        cv2_image = np.transpose(numpy_image, (1, 2, 0))
+        cv2_image = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)
+
+        height, width = (cv2_image.shape[0], cv2_image.shape[1])
+        max_width, max_height = (640, 640)
+
+        if height > max_height or width > max_width:
+            scale = min(max_height / height, max_width / width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            temp_vision_frame = cv2.resize(cv2_image, (new_width, new_height))
+        else:
+            temp_vision_frame = cv2_image
+
+        ratio_height = cv2_image.shape[0] / temp_vision_frame.shape[0]
+        ratio_width = cv2_image.shape[1] / temp_vision_frame.shape[1]
    
+        self.yunet_model.setInputSize((temp_vision_frame.shape[1], temp_vision_frame.shape[0]))
+        self.yunet_model.setScoreThreshold(score)
+        _, detections = self.yunet_model.detect(temp_vision_frame)
+
+        bbox_list = []
+        score_list = []
+        kps_list = []
+        if np.any(detections):
+            r = 0
+            for detection in detections:
+                bbox_list.append(np.array(
+                [
+                    detection[0] * ratio_width,
+                    detection[1] * ratio_height,
+                    (detection[0] + detection[2]) * ratio_width,
+                    (detection[1] + detection[3]) * ratio_height
+                ]))
+                kps_list.append(detection[4:14].reshape((5, 2)) * [ ratio_width, ratio_height ])
+                score_list.append(detection[14])
+                r += 1
+                if r==max_num: 
+                    break
+
+        return np.array(kps_list)
+
     def run_insight106(self, img):
         height = img.size(dim=1)
         width = img.size(dim=2)
