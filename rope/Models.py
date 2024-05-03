@@ -77,7 +77,7 @@ class Models():
 
         elif detect_mode=='Yunet':
             if not self.yunet_model:
-                self.yunet_model = cv2.FaceDetectorYN.create('.\models\yunet_n_640_640.onnx', '', (0, 0))
+                self.yunet_model = onnxruntime.InferenceSession('.\models\yunet_n_640_640.onnx', providers=self.providers)
         
             kpss = self.detect_yunet(img, max_num=max_num, score=score)
 
@@ -629,49 +629,153 @@ class Models():
 
     def detect_yunet(self, img, max_num, score):
 
-        # Convert the tensor to a numpy array
-        numpy_image = img.detach().cpu().numpy()
+        def bgr_to_rgb(input, name=None):
+            """
+            Convert a BGR image to RGB.
 
-        # Convert the numpy array to a cv2 image
-        cv2_image = np.transpose(numpy_image, (1, 2, 0))
-        cv2_image = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)
+            Args:
+              input: A 3-D (`[H, W, 3]`) or 4-D (`[N, H, W, 3]`) Tensor.
+              name: A name for the operation (optional).
 
-        height, width = (cv2_image.shape[0], cv2_image.shape[1])
-        max_width, max_height = (640, 640)
+            Returns:
+              A 3-D (`[H, W, 3]`) or 4-D (`[N, H, W, 3]`) Tensor.
+            """
+            #bgr = tf.unstack(input, axis=-1)
+            bgr = torch.unbind(input)
+            b, g, r = bgr[0], bgr[1], bgr[2]
+            #return tf.stack([r, g, b], axis=-1)
+            return torch.stack((r, g, b))
 
-        if height > max_height or width > max_width:
-            scale = min(max_height / height, max_width / width)
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            temp_vision_frame = cv2.resize(cv2_image, (new_width, new_height))
+        height = img.size(dim=1)
+        width = img.size(dim=2)
+        input_size = (640, 640)
+        im_ratio = float(height) / width
+        model_ratio = float(input_size[1]) / input_size[0]
+        if im_ratio > model_ratio:
+            new_height = input_size[1]
+            new_width = int(new_height / im_ratio)
         else:
-            temp_vision_frame = cv2_image
+            new_width = input_size[0]
+            new_height = int(new_width * im_ratio)
+        det_scale = float(new_height) / height
 
-        ratio_height = cv2_image.shape[0] / temp_vision_frame.shape[0]
-        ratio_width = cv2_image.shape[1] / temp_vision_frame.shape[1]
+        t640 = v2.Resize((new_height, new_width), antialias=False)
+        img = t640(img)
+
+        img = bgr_to_rgb(img)
+        img = img.permute(1, 2, 0)
+
+        image = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
+        image[:new_height, :new_width, :] = img
+        
+        blob =  torch.from_numpy(np.transpose(image.to('cpu').numpy(), [2, 0, 1]).astype(np.float32)[np.newaxis, ...].copy()).to('cuda')
+        #blob = torch.from_numpy((image.permute(2, 0, 1).to(dtype=torch.float32).unsqueeze(0)).to('cpu').numpy().copy()).to('cuda')
+        
+        input_name = self.yunet_model.get_inputs()[0].name
+        outputs = self.yunet_model.get_outputs()
+        output_names = []
+        for o in outputs:
+            output_names.append(o.name)
    
-        self.yunet_model.setInputSize((temp_vision_frame.shape[1], temp_vision_frame.shape[0]))
-        self.yunet_model.setScoreThreshold(score)
-        _, detections = self.yunet_model.detect(temp_vision_frame)
+        io_binding = self.yunet_model.io_binding() 
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=blob.size(), buffer_ptr=blob.data_ptr())
+        
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i]) 
+        
+        # Sync and run model
+        syncvec = self.syncvec.cpu()        
+        self.yunet_model.run_with_iobinding(io_binding)       
+        net_outs = io_binding.copy_outputs_to_cpu()
+        
+        strides = [8, 16, 32]
+        scores, bboxes, kpss = [], [], []
+        for idx, stride in enumerate(strides):
+            cls_pred = net_outs[idx].reshape(-1, 1)
+            obj_pred = net_outs[idx + len(strides)].reshape(-1, 1)
+            reg_pred = net_outs[idx + len(strides) * 2].reshape(-1, 4)
+            kps_pred = net_outs[idx + len(strides) * 3].reshape(
+                -1, 5 * 2)
+
+            anchor_centers = np.stack(
+                np.mgrid[:(input_size[1] // stride), :(input_size[0] //
+                                                       stride)][::-1],
+                axis=-1)
+            anchor_centers = (anchor_centers * stride).astype(
+                np.float32).reshape(-1, 2)
+
+            bbox_cxy = reg_pred[:, :2] * stride + anchor_centers[:]
+            bbox_wh = np.exp(reg_pred[:, 2:]) * stride
+            tl_x = (bbox_cxy[:, 0] - bbox_wh[:, 0] / 2.)
+            tl_y = (bbox_cxy[:, 1] - bbox_wh[:, 1] / 2.)
+            br_x = (bbox_cxy[:, 0] + bbox_wh[:, 0] / 2.)
+            br_y = (bbox_cxy[:, 1] + bbox_wh[:, 1] / 2.)
+
+            bboxes.append(np.stack([tl_x, tl_y, br_x, br_y], -1))
+            # for nk in range(5):
+            per_kps = np.concatenate(
+                [((kps_pred[:, [2 * i, 2 * i + 1]] * stride) + anchor_centers)
+                 for i in range(5)],
+                axis=-1)
+
+            kpss.append(per_kps)
+            scores.append(cls_pred * obj_pred)
+
+        scores = np.concatenate(scores, axis=0).reshape(-1)
+        bboxes = np.concatenate(bboxes, axis=0)
+        kpss = np.concatenate(kpss, axis=0)
+        score_mask = (scores > score)
+        scores = scores[score_mask]
+        bboxes = bboxes[score_mask]
+        kpss = kpss[score_mask]
+   
+        bboxes /= det_scale
+        kpss /= det_scale
+        pre_det = np.hstack((bboxes, scores[:, None]))
+
+        dets = pre_det
+        thresh = 0.4
+        x1 = dets[:, 0]
+        y1 = dets[:, 1]
+        x2 = dets[:, 2]
+        y2 = dets[:, 3]
+        scoresb = dets[:, -1]
+
+        areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+        order = scoresb.argsort()[::-1]
+
+        keep = []
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+
+            w = np.maximum(0.0, xx2 - xx1 + 1)
+            h = np.maximum(0.0, yy2 - yy1 + 1)
+            inter = w * h
+            ovr = inter / (areas[i] + areas[order[1:]] - inter)
+
+            inds = np.where(ovr <= thresh)[0]
+            order = order[inds + 1]
+
+        kpss = kpss[keep, :]
+        bboxes = pre_det[keep, :]
 
         bbox_list = []
-        score_list = []
+        #score_list = []
         kps_list = []
-        if np.any(detections):
-            r = 0
-            for detection in detections:
-                bbox_list.append(np.array(
-                [
-                    detection[0] * ratio_width,
-                    detection[1] * ratio_height,
-                    (detection[0] + detection[2]) * ratio_width,
-                    (detection[1] + detection[3]) * ratio_height
-                ]))
-                kps_list.append(detection[4:14].reshape((5, 2)) * [ ratio_width, ratio_height ])
-                score_list.append(detection[14])
-                r += 1
-                if r==max_num: 
+        for i in range(bboxes.shape[0]):
+            if i==max_num:
                     break
+            box = bboxes[i]
+            bbox_list.append(box)
+            #x1, y1, x2, y2, score = bbox.astype(np.int32)
+            if kpss is not None:
+                kps = kpss[i].reshape(-1, 2)
+                kps_list.append(kps)
 
         return np.array(kps_list)
 
