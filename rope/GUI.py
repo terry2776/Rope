@@ -957,7 +957,7 @@ class GUI(tk.Tk):
                         
                         img = img.permute(2,0,1)
                         try: 
-                            kpss = self.models.run_detect(img, max_num=1)[0] # Just one face here
+                            kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1)[0] # Just one face here
                         except IndexError:
                             print('Image cropped too close:', file) 
                         else:
