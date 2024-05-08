@@ -54,34 +54,35 @@ class Models():
         return memory_used, memory_total[0]     
 
     def run_detect(self, img, detect_mode='Retinaface', max_num=1, score=0.5):
+        bboxes = []
         kpss = []
         
         if detect_mode=='Retinaface':
             if not self.retinaface_model:
                 self.retinaface_model = onnxruntime.InferenceSession('.\models\det_10g.onnx', providers=self.providers)
                 
-            kpss = self.detect_retinaface(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_retinaface(img, max_num=max_num, score=score)
             
         elif detect_mode=='SCRDF':
             if not self.scrdf_model:
                 self.scrdf_model = onnxruntime.InferenceSession('.\models\scrfd_2.5g_bnkps.onnx', providers=self.providers)
                 
-            kpss = self.detect_scrdf(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_scrdf(img, max_num=max_num, score=score)
             
         
         elif detect_mode=='Yolov8':
             if not self.yoloface_model:
                 self.yoloface_model = onnxruntime.InferenceSession('.\models\yoloface_8n.onnx', providers=self.providers)
         
-            kpss = self.detect_yoloface(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_yoloface(img, max_num=max_num, score=score)
 
         elif detect_mode=='Yunet':
             if not self.yunet_model:
                 self.yunet_model = onnxruntime.InferenceSession('.\models\yunet_n_640_640.onnx', providers=self.providers)
         
-            kpss = self.detect_yunet(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_yunet(img, max_num=max_num, score=score)
 
-        return kpss
+        return bboxes, kpss
         
     def run_align(self, img):
         points = []
@@ -379,6 +380,9 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
+        # delete score column
+        det = np.delete(det, 4, 1)
+
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] -
                                                     det[:, 1])
@@ -393,10 +397,11 @@ class Models():
             bindex = np.argsort(values)[::-1]  # some extra weight on the centering
             bindex = bindex[0:max_num]
 
+            det = det[bindex, :]
             if kpss is not None:
                 kpss = kpss[bindex, :]
                 
-        return kpss   
+        return det, kpss   
         
     def detect_scrdf(self, img, max_num, score):
         # Resize image to fit within the input_size
@@ -546,6 +551,9 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
+        # delete score column
+        det = np.delete(det, 4, 1)
+        
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] -
                                                     det[:, 1])
@@ -560,10 +568,11 @@ class Models():
             bindex = np.argsort(values)[::-1]  # some extra weight on the centering
             bindex = bindex[0:max_num]
 
+            det = det[bindex, :]
             if kpss is not None:
                 kpss = kpss[bindex, :]
-                
-        return kpss           
+
+        return det, kpss           
         
     def detect_yoloface(self, img, max_num, score):
 
@@ -618,14 +627,16 @@ class Models():
             score_list = score_raw.ravel().tolist()        
 
         result_boxes = cv2.dnn.NMSBoxes(bbox_list, score_list, 0.25, 0.45, 0.5)
-        
-        result = []
+
+        bboxes_list = []
+        kpss_list = []
         for r in result_boxes:
             if r==max_num: 
                 break
-            result.append(kps_list[r])
+            bboxes_list.append(bbox_list[r])
+            kpss_list.append(kps_list[r])
             
-        return np.array(result)
+        return np.array(bboxes_list), np.array(kpss_list)
 
     def detect_yunet(self, img, max_num, score):
 
@@ -757,14 +768,14 @@ class Models():
         for i in range(bboxes.shape[0]):
             if i==max_num:
                     break
-            box = bboxes[i]
+            box = np.array((bboxes[i][0], bboxes[i][1], bboxes[i][2], bboxes[i][3]))
             bbox_list.append(box)
-            #x1, y1, x2, y2, score = bbox.astype(np.int32)
+            
             if kpss is not None:
                 kps = kpss[i].reshape(-1, 2)
                 kps_list.append(kps)
 
-        return np.array(kps_list)
+        return np.array(bbox_list), np.array(kps_list)
 
     def run_insight106(self, img):
         height = img.size(dim=1)
