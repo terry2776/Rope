@@ -609,6 +609,8 @@ class VideoManager():
         return img.astype(np.uint8)
 
     def findCosineDistance(self, vector1, vector2):
+        return 1 - np.dot(vector1, vector2)/(np.linalg.norm(vector1)*np.linalg.norm(vector2))
+        '''
         vec1 = vector1.flatten()
         vec2 = vector2.flatten()
 
@@ -616,6 +618,7 @@ class VideoManager():
         b = np.dot(vec1.T, vec1)
         c = np.dot(vec2.T, vec2)
         return 1 - (a/(np.sqrt(b)*np.sqrt(c)))
+        '''
 
     def func_w_test(self, name, func, *args, **argsv):
         timing = time.time()
