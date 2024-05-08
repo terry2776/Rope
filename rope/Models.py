@@ -629,23 +629,6 @@ class Models():
 
     def detect_yunet(self, img, max_num, score):
 
-        def bgr_to_rgb(input, name=None):
-            """
-            Convert a BGR image to RGB.
-
-            Args:
-              input: A 3-D (`[H, W, 3]`) or 4-D (`[N, H, W, 3]`) Tensor.
-              name: A name for the operation (optional).
-
-            Returns:
-              A 3-D (`[H, W, 3]`) or 4-D (`[N, H, W, 3]`) Tensor.
-            """
-            #bgr = tf.unstack(input, axis=-1)
-            bgr = torch.unbind(input)
-            b, g, r = bgr[0], bgr[1], bgr[2]
-            #return tf.stack([r, g, b], axis=-1)
-            return torch.stack((r, g, b))
-
         height = img.size(dim=1)
         width = img.size(dim=2)
         input_size = (640, 640)
@@ -662,8 +645,12 @@ class Models():
         t640 = v2.Resize((new_height, new_width), antialias=False)
         img = t640(img)
 
-        img = bgr_to_rgb(img)
-        img = img.permute(1, 2, 0)
+        # Switch to BGR
+        img = img.permute(1,2,0)
+        img = img[:, :, [2,1,0]]
+        #img = img.permute(2,0,1)
+        #
+        #img = img.permute(1,2,0)
 
         image = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
         image[:new_height, :new_width, :] = img
