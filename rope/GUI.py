@@ -574,7 +574,6 @@ class GUI(tk.Tk):
 
         # Cats and Dogs
         self.widget['ThreadsSlider'] = GE.Slider2(parameters_canvas, 'ThreadsSlider', 'Threads', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-
         row += row_delta 
         self.widget['DetectTypeTextSel'] = GE.TextSelection(parameters_canvas, 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta 
@@ -935,9 +934,9 @@ class GUI(tk.Tk):
                 print('Unrecognized file type:', file)
             else:
                 # Its an image
-                if file_type == 'image':                
+                if file_type == 'image':
                     img = cv2.imread(file)                    
-                    
+
                     if img is not None:     
                         img = torch.from_numpy(img.astype('uint8')).to('cuda')
 
@@ -954,7 +953,7 @@ class GUI(tk.Tk):
 
                         padding[height_start:height_end, width_start:width_end,  :] = img
                         img = padding
-                        
+
                         img = img.permute(2,0,1)
                         try: 
                             #bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1)[0] # Just one face here
@@ -1011,7 +1010,7 @@ class GUI(tk.Tk):
                     face_kps = kpss[i]
 
                 face_emb, cropped_img = self.models.run_recognize(img, face_kps)
-                ret.append([face_kps, face_emb, cropped_img])            
+                ret.append([face_kps, face_emb, cropped_img])
 
         except Exception:
             print(" No media selected")

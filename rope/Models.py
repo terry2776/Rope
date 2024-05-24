@@ -90,7 +90,7 @@ class Models():
         if not self.insight106_model:
             self.insight106_model = onnxruntime.InferenceSession('.\models\2d106det.onnx', providers=self.providers)
             
-        points = self.detect_insight106(img)   
+        points = self.detect_insight106(img)
     
     def delete_models(self):
 
@@ -256,8 +256,6 @@ class Models():
         # Prepare data and find model parameters 
         det_img = torch.unsqueeze(det_img, 0).contiguous()
         
-
-        
         io_binding = self.retinaface_model.io_binding() 
         io_binding.bind_input(name='input.1', device_type='cuda', device_id=0, element_type=np.float32,  shape=det_img.size(), buffer_ptr=det_img.data_ptr())
 
@@ -400,7 +398,7 @@ class Models():
             det = det[bindex, :]
             if kpss is not None:
                 kpss = kpss[bindex, :]
-                
+
         return det, kpss   
         
     def detect_scrdf(self, img, max_num, score):
@@ -805,7 +803,7 @@ class Models():
         self.syncvec.cpu()     
         self.insight106_model.run_with_iobinding(io_binding)
         
-        net_outs = io_binding.copy_outputs_to_cpu() 
+        net_outs = io_binding.copy_outputs_to_cpu()
         
     def recognize(self, img, face_kps):
         # Find transform 
@@ -813,11 +811,11 @@ class Models():
         tform.estimate(face_kps, self.arcface_dst)
 
         # Transform
-        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
+        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) )
         img = v2.functional.crop(img, 0,0, 112, 112)
 
         # Switch to BGR and normalize
-        img = img.permute(1,2,0) #112,112,3   
+        img = img.permute(1,2,0) #112,112,3
         cropped_image = img
         img = img[:, :, [2,1,0]]
         img = torch.sub(img, 127.5)
