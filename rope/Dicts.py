@@ -160,6 +160,10 @@ DEFAULT_DATA = {
 'DiffSwitchState':                  False,
 'FaceAdjSwitchInfoText':            'KPS and SCALE ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the face landmarks found by the detector. There is also an option to adjust the scale of the swapped face.',
 'FaceAdjSwitchState':               False,
+#
+'LandmarksDetectionAdjSwitchInfoText': 'KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the face landmarks found by the detector. ',
+'LandmarksDetectionAdjSwitchState':    False,
+#
 'FaceParserSwitchInfoText':         'BACKGROUND MASK:\nAllow the unprocessed background from the orginal image to show in the final swap.',
 'FaceParserSwitchState':            False,
 'MouthParserSwitchInfoText':        'MOUTH MASK:\nAllow the mouth from the original face to show on the swapped face.',
@@ -221,6 +225,13 @@ DEFAULT_DATA = {
 'DetectScoreSliderInfoText':        'DETECTION SCORE LIMIT:\nDetermines the minimum score required for a face to be detected. Higher values require higher quality faces. E.g., if faces are flickering when at extreme angles, raising this will limit swapping attempts.',
 'DetectScoreSliderMax':             100,
 'DetectScoreSliderMin':             1,
+#
+'LandmarksDetectScoreSliderAmount':  50,
+'LandmarksDetectScoreSliderInc':     1,      
+'LandmarksDetectScoreSliderInfoText':'LANDMARKS DETECTION SCORE LIMIT:\nDetermines the minimum score required for a face to be detected. Higher values require higher quality faces. E.g., if faces are flickering when at extreme angles, raising this will limit swapping attempts.',
+'LandmarksDetectScoreSliderMax':     100,
+'LandmarksDetectScoreSliderMin':     1,
+#
 'DiffSliderAmount':                 4,   
 'DiffSliderInc':                    1,
 'DiffSliderInfoText':               'DIFFERENCING AMOUNT:\nHigher values relaxes the similarity constraint.',
@@ -303,6 +314,11 @@ DEFAULT_DATA = {
 'DetectTypeTextSelInfoText':        'FACE DETECTION MODEL:\nSelect the face detection model. Mostly only subtle differences, but can significant differences when the face is at extreme angles or covered.',
 'DetectTypeTextSelMode':            'Retinaface',
 'DetectTypeTextSelModes':           ['Retinaface', 'Yolov8', 'SCRDF', 'Yunet'],
+#
+'LandmarksDetectTypeTextSelInfoText': 'LANDMARKS FACE DETECTION MODEL:\nSelect the landmarks face detection model. Mostly only subtle differences, but can significant differences when the face is at extreme angles or covered.',
+'LandmarksDetectTypeTextSelMode':     '98',
+'LandmarksDetectTypeTextSelModes':    ['68', '3d68', '98', '106', '478'],
+#
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',
 'PreviewModeTextSelModes':          ['Video', 'Image'],

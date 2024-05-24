@@ -428,7 +428,7 @@ class GUI(tk.Tk):
         canvas = tk.Canvas(r_frame, style.canvas_frame_label_3, bd=0, width=width)
         canvas.grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
         
-        parameters_canvas = tk.Frame(canvas, style.canvas_frame_label_3, bd=0, width=width, height=1000)
+        parameters_canvas = tk.Frame(canvas, style.canvas_frame_label_3, bd=0, width=width, height=1100)
         parameters_canvas.grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)  
 
        
@@ -578,7 +578,19 @@ class GUI(tk.Tk):
         self.widget['DetectTypeTextSel'] = GE.TextSelection(parameters_canvas, 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta 
         self.widget['DetectScoreSlider'] = GE.Slider2(parameters_canvas, 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        # Landmarks Detection
+        row += top_border_delta
+        self.static_widget['4'] = GE.Separator_x(parameters_canvas, 0, row)
+        row += bottom_border_delta
+        self.widget['LandmarksDetectionAdjSwitch'] = GE.Switch2(parameters_canvas, 'LandmarksDetectionAdjSwitch', 'Landmarks Detection Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
+        row += switch_delta
+        self.widget['LandmarksDetectTypeTextSel'] = GE.TextSelection(parameters_canvas, 'LandmarksDetectTypeTextSel', 'Landmarks Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
+        self.widget['LandmarksDetectScoreSlider'] = GE.Slider2(parameters_canvas, 'LandmarksDetectScoreSlider', 'Landmarks Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += top_border_delta
+        self.static_widget['4'] = GE.Separator_x(parameters_canvas, 0, row)
+        row += bottom_border_delta
+        #
         self.widget['RecordTypeTextSel'] = GE.TextSelection(parameters_canvas, 'RecordTypeTextSel', 'Record Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta 
         self.widget['VideoQualSlider'] = GE.Slider2(parameters_canvas, 'VideoQualSlider', 'FFMPEG Quality', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
@@ -958,7 +970,7 @@ class GUI(tk.Tk):
 
                         img = img.permute(2,0,1)
                         try: 
-                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1) # Just one face here
+                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1, score=0.5, use_lankmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=0.5) # Just one face here
                             kpss = kpss[0]
                         except IndexError:
                             print('Image cropped too close:', file) 
@@ -1004,7 +1016,7 @@ class GUI(tk.Tk):
         try:
             img = torch.from_numpy(self.video_image).to('cuda')
             img = img.permute(2,0,1)
-            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0)
+            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0, use_lankmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=self.parameters["LandmarksDetectScoreSlider"]/100.0)
 
             ret = []
             for i in range(kpss.shape[0]):

@@ -1,4 +1,3 @@
-
 import cv2
 import numpy as np
 from skimage import transform as trans
@@ -12,6 +11,8 @@ import onnx
 from itertools import product as product
 import subprocess as sp
 onnxruntime.set_default_logger_severity(4)
+import rope.FaceUtil as faceutil
+import pickle
 
 class Models():
     def __init__(self):
@@ -22,6 +23,12 @@ class Models():
         self.yoloface_model = []
         self.scrdf_model = []
         self.yunet_model = []
+        self.face_landmark_68_model = []
+        self.face_landmark_3d68_model = []
+        self.mean_lmk = []
+        self.face_landmark_98_model = []
+        self.face_landmark_106_model = []
+        self.face_landmark_478_model = []
         self.resnet50_model, self.anchors  = [], []
 
         self.insight106_model = []
@@ -40,6 +47,9 @@ class Models():
 
         self.syncvec = torch.empty((1,1), dtype=torch.float32, device='cuda:0')
 
+        self.normalize = v2.Normalize(mean = [ 0., 0., 0. ],
+                                      std = [ 1/1.0, 1/1.0, 1/1.0 ])
+
     def get_gpu_memory(self):
         command = "nvidia-smi --query-gpu=memory.total --format=csv"
         memory_total_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
@@ -53,7 +63,7 @@ class Models():
 
         return memory_used, memory_total[0]
 
-    def run_detect(self, img, detect_mode='Retinaface', max_num=1, score=0.5):
+    def run_detect(self, img, detect_mode='Retinaface', max_num=1, score=0.5, use_lankmark_detection=False, landmark_detect_mode='98', landmark_score=0.5):
         bboxes = []
         kpss = []
 
@@ -61,43 +71,90 @@ class Models():
             if not self.retinaface_model:
                 self.retinaface_model = onnxruntime.InferenceSession('.\models\det_10g.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_retinaface(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_retinaface(img, max_num=max_num, score=score, use_lankmark_detection=use_lankmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score)
 
         elif detect_mode=='SCRDF':
             if not self.scrdf_model:
                 self.scrdf_model = onnxruntime.InferenceSession('.\models\scrfd_2.5g_bnkps.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_scrdf(img, max_num=max_num, score=score)
-
+            bboxes, kpss = self.detect_scrdf(img, max_num=max_num, score=score, use_lankmark_detection=use_lankmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score)
 
         elif detect_mode=='Yolov8':
             if not self.yoloface_model:
                 self.yoloface_model = onnxruntime.InferenceSession('.\models\yoloface_8n.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_yoloface(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_yoloface(img, max_num=max_num, score=score, use_lankmark_detection=use_lankmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score)
 
         elif detect_mode=='Yunet':
             if not self.yunet_model:
                 self.yunet_model = onnxruntime.InferenceSession('.\models\yunet_n_640_640.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_yunet(img, max_num=max_num, score=score)
+            bboxes, kpss = self.detect_yunet(img, max_num=max_num, score=score, use_lankmark_detection=use_lankmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score)
 
         return bboxes, kpss
 
-    def run_align(self, img):
-        points = []
+    def run_detect_landmark(self, img, bbox, det_kpss, detect_mode='98', score=0.1):
+        kpss = []
+        scores = []
 
-        if not self.insight106_model:
-            self.insight106_model = onnxruntime.InferenceSession('.\models\2d106det.onnx', providers=self.providers)
+        if detect_mode=='68':
+            if not self.face_landmark_68_model:
+                self.face_landmark_68_model = onnxruntime.InferenceSession('.\\models\\2dfan4.onnx', providers=self.providers)
 
-        points = self.detect_insight106(img)
+            kpss, scores = self.detect_face_landmark_68(img, bbox=bbox, det_kpss=det_kpss, convert68_5=True)
+
+        elif detect_mode=='3d68':
+            if not self.face_landmark_3d68_model:
+                self.face_landmark_3d68_model = onnxruntime.InferenceSession('.\\models\\1k3d68.onnx', providers=self.providers)
+                with open('.\\models\\meanshape_68.pkl', 'rb') as f:
+                    self.mean_lmk = pickle.load(f)
+
+            kpss, scores = self.detect_face_landmark_3d68(img, bbox=bbox, det_kpss=det_kpss, convert68_5=True)
+
+            return kpss, scores
+
+        elif detect_mode=='98':
+            if not self.face_landmark_98_model:
+                self.face_landmark_98_model = onnxruntime.InferenceSession('.\\models\\peppapig_teacher_Nx3x256x256.onnx', providers=self.providers)
+
+            kpss, scores = self.detect_face_landmark_98(img, bbox=bbox, det_kpss=det_kpss, convert98_5=True)
+
+        elif detect_mode=='106':
+            if not self.face_landmark_106_model:
+                self.face_landmark_106_model = onnxruntime.InferenceSession('.\\models\\2d106det.onnx', providers=self.providers)
+
+            kpss, scores = self.detect_face_landmark_106(img, bbox=bbox, det_kpss=det_kpss, convert106_5=True)
+
+            return kpss, scores
+
+        elif detect_mode=='478':
+            if not self.face_landmark_478_model:
+                self.face_landmark_478_model = onnxruntime.InferenceSession('.\\models\\face_landmarks_detector_Nx3x256x256.onnx', providers=self.providers)
+
+            kpss, scores = self.detect_face_landmark_478(img, bbox=bbox, det_kpss=det_kpss, convert478_5=True)
+
+            return kpss, scores
+
+        if len(kpss) > 0:
+            if len(scores) > 0:
+                if np.mean(scores) >= score:
+                    return kpss, scores
+            else:
+                return kpss, scores
+
+        return [], []
 
     def delete_models(self):
-
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
         self.yunet_model = []
+        self.face_landmark_68_model = []
+        self.face_landmark_3d68_model = []
+        self.mean_lmk = []
+        self.face_landmark_98_model = []
+        self.face_landmark_106_model = []
+        self.face_landmark_478_model = []
         self.resnet50_model = []
         self.insight106_model = []
         self.recognition_model = []
@@ -221,7 +278,10 @@ class Models():
         self.syncvec.cpu()
         self.faceparser_model.run_with_iobinding(io_binding)
 
-    def detect_retinaface(self, img, max_num, score):
+    def detect_retinaface(self, img, max_num, score, use_lankmark_detection, landmark_detect_mode, landmark_score):
+        if use_lankmark_detection:
+            img_landmark = img.clone()
+
         # Resize image to fit within the input_size
         input_size = (640, 640)
         im_ratio = torch.div(img.size()[1], img.size()[2])
@@ -391,9 +451,24 @@ class Models():
             if kpss is not None:
                 kpss = kpss[bindex, :]
 
+        if use_lankmark_detection and len(kpss) > 0:
+            for i in range(kpss.shape[0]):
+                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score)
+                if len(landmark_kpss) > 0:
+                    if len(landmark_scores) > 0:
+                        #print(np.mean(landmark_scores))
+                        #print(np.mean(scoresb[i]))
+                        if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                            kpss[i] = landmark_kpss
+                    else:
+                        kpss[i] = landmark_kpss
+
         return det, kpss
 
-    def detect_scrdf(self, img, max_num, score):
+    def detect_scrdf(self, img, max_num, score, use_lankmark_detection, landmark_detect_mode, landmark_score):
+        if use_lankmark_detection:
+            img_landmark = img.clone()
+
         # Resize image to fit within the input_size
         input_size = (640, 640)
         im_ratio = torch.div(img.size()[1], img.size()[2])
@@ -562,9 +637,24 @@ class Models():
             if kpss is not None:
                 kpss = kpss[bindex, :]
 
+        if use_lankmark_detection and len(kpss) > 0:
+            for i in range(kpss.shape[0]):
+                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score)
+                if len(landmark_kpss) > 0:
+                    if len(landmark_scores) > 0:
+                        #print(np.mean(landmark_scores))
+                        #print(np.mean(scoresb[i]))
+                        if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                            kpss[i] = landmark_kpss
+                    else:
+                        kpss[i] = landmark_kpss
+
         return det, kpss
 
-    def detect_yoloface(self, img, max_num, score):
+    def detect_yoloface(self, img, max_num, score, use_lankmark_detection, landmark_detect_mode, landmark_score):
+        if use_lankmark_detection:
+            img_landmark = img.clone()
+
         height = img.size(dim=1)
         width = img.size(dim=2)
         length = max((height, width))
@@ -626,12 +716,26 @@ class Models():
         for r in result_boxes:
             if r==max_num: 
                 break
+            if use_lankmark_detection and len(kps_list[r]) > 0:
+                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, bbox_list[r], kps_list[r], landmark_detect_mode, landmark_score)
+                if len(landmark_kpss) > 0:
+                    if len(landmark_scores) > 0:
+                        #print(np.mean(landmark_scores))
+                        #print(np.mean(score_list[r]))
+                        if np.mean(landmark_scores) > np.mean(score_list[r]):
+                            kps_list[r] = landmark_kpss
+                    else:
+                        kps_list[r] = landmark_kpss
+
             bboxes_list.append(bbox_list[r])
             kpss_list.append(kps_list[r])
 
         return np.array(bboxes_list), np.array(kpss_list)
 
-    def detect_yunet(self, img, max_num, score):
+    def detect_yunet(self, img, max_num, score, use_lankmark_detection, landmark_detect_mode, landmark_score):
+        if use_lankmark_detection:
+            img_landmark = img.clone()
+
         height = img.size(dim=1)
         width = img.size(dim=2)
         input_size = (640, 640)
@@ -762,46 +866,302 @@ class Models():
 
             if kpss is not None:
                 kps = kpss[i].reshape(-1, 2)
+                if use_lankmark_detection and len(kps) > 0:
+                    landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, box, kps, landmark_detect_mode, landmark_score)
+                    if len(landmark_kpss) > 0:
+                        if len(landmark_scores) > 0:
+                            #print(np.mean(landmark_scores))
+                            #print(np.mean(scoresb[i]))
+                            if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                                kps = landmark_kpss
+                        else:
+                            kps = landmark_kpss
+
                 kps_list.append(kps)
 
         return np.array(bbox_list), np.array(kps_list)
 
-    def run_insight106(self, img):
-        height = img.size(dim=1)
-        width = img.size(dim=2)
-        length = max((height, width))
+    def detect_face_landmark_68(self, img, bbox, det_kpss, convert68_5=True):
+        input_name = self.face_landmark_68_model.get_inputs()[0].name
 
-        image = torch.zeros((length, length, 3), dtype=torch.uint8, device='cuda')
-        img = img.permute(1,2,0)
+        outputs = self.face_landmark_68_model.get_outputs()
+        output_names = []
+        for out in outputs:
+            output_names.append(out.name)
 
-        image[0:height, 0:width] = img
-        scale = length/192
-        image = torch.div(image, 255.0)
+        crop_image, affine_matrix = faceutil.warp_face_by_bounding_box_for_landmark_68(img, bbox, (256, 256))
+        '''
+        cv2.imshow('image', crop_image.permute(1, 2, 0).to('cpu').numpy())
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        '''
+        crop_image = crop_image.to(dtype=torch.float32)
+        crop_image = torch.div(crop_image, 255.0)
+        crop_image = torch.unsqueeze(crop_image, 0).contiguous()
 
-        t192 = v2.Resize((192, 192), antialias=False)
-        image = image.permute(2, 0, 1)
-        image = t192(image)
+        io_binding = self.face_landmark_68_model.io_binding()
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
 
-        image = torch.unsqueeze(image, 0).contiguous()
-
-        io_binding = self.insight106_model.io_binding()
-        io_binding.bind_input(name='data', device_type='cuda', device_id=0, element_type=np.float32,  shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output('fc1', 'cuda')
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i])
 
         # Sync and run model
-        self.syncvec.cpu()
-        self.insight106_model.run_with_iobinding(io_binding)
-
+        syncvec = self.syncvec.cpu()
+        self.face_landmark_68_model.run_with_iobinding(io_binding)
         net_outs = io_binding.copy_outputs_to_cpu()
+        face_landmark_68 = net_outs[0]
+        face_heatmap = net_outs[1]
+
+        face_landmark_68 = face_landmark_68[:, :, :2][0] / 64
+        face_landmark_68 = face_landmark_68.reshape(1, -1, 2) * 256
+        face_landmark_68 = cv2.transform(face_landmark_68, cv2.invertAffineTransform(affine_matrix))
+        face_landmark_68 = face_landmark_68.reshape(-1, 2)
+        face_landmark_68_score = np.amax(face_heatmap, axis = (2, 3))
+        face_landmark_68_score = face_landmark_68_score.reshape(-1, 1)
+
+        if convert68_5:
+            face_landmark_68, face_landmark_68_score = faceutil.convert_face_landmark_68_to_5(face_landmark_68, face_landmark_68_score)
+
+        #faceutil.test_bbox_landmarks(img, bbox, face_landmark_68)
+
+        return face_landmark_68, face_landmark_68_score
+
+    def detect_face_landmark_3d68(self, img, bbox, det_kpss, convert68_5=True):
+        input_name = self.face_landmark_3d68_model.get_inputs()[0].name
+
+        outputs = self.face_landmark_3d68_model.get_outputs()
+        output_names = []
+        for out in outputs:
+            output_names.append(out.name)
+        assert len(output_names)==1
+
+        w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
+        center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
+        rotate = 0
+        _scale = 192  / (max(w, h)*1.5)
+        #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
+        aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
+        '''
+        cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        '''
+        aimg = torch.unsqueeze(aimg, 0).contiguous()
+        aimg = aimg.to(dtype=torch.float32)
+        aimg = self.normalize(aimg)
+        io_binding = self.face_landmark_3d68_model.io_binding()
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i])
+
+        # Sync and run model
+        syncvec = self.syncvec.cpu()
+        self.face_landmark_3d68_model.run_with_iobinding(io_binding)
+        pred = io_binding.copy_outputs_to_cpu()[0][0]
+
+        if pred.shape[0] >= 3000:
+            pred = pred.reshape((-1, 3))
+        else:
+            pred = pred.reshape((-1, 2))
+        if 68 < pred.shape[0]:
+            pred = pred[68*-1:,:]
+        pred[:, 0:2] += 1
+        pred[:, 0:2] *= (192 // 2)
+        if pred.shape[1] == 3:
+            pred[:, 2] *= (192 // 2)
+
+        IM = cv2.invertAffineTransform(M)
+        pred = faceutil.trans_points(pred, IM)
+
+        # at moment we don't use 3d points
+        '''
+        P = faceutil.estimate_affine_matrix_3d23d(self.mean_lmk, pred)
+        s, R, t = faceutil.P2sRt(P)
+        rx, ry, rz = faceutil.matrix2angle(R)
+        pose = np.array( [rx, ry, rz], dtype=np.float32 ) #pitch, yaw, roll
+        '''
+        # convert from 3d68 to 2d68 keypoints
+        landmark2d68 = np.array(pred[:, [0, 1]])
+
+        if convert68_5:
+            # convert from 68 to 5 keypoints
+            landmark2d68, _ = faceutil.convert_face_landmark_68_to_5(landmark2d68, [])
+
+        #faceutil.test_bbox_landmarks(img, bbox, landmark2d68)
+
+        return landmark2d68, []
+
+    def detect_face_landmark_98(self, img, bbox, det_kpss, convert98_5=True):
+        input_name = self.face_landmark_98_model.get_inputs()[0].name
+
+        outputs = self.face_landmark_98_model.get_outputs()
+        output_names = []
+        for out in outputs:
+            output_names.append(out.name)
+
+        crop_image, detail = faceutil.warp_face_by_bounding_box_for_landmark_98(img, bbox, (256, 256))
+        #crop_image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, self.arcface_dst, image_size=256)
+        #h, w = (crop_image.size(dim=1), crop_image.size(dim=2))
+        '''
+        cv2.imshow('image', crop_image.permute(1, 2, 0).to('cpu').numpy())
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        '''
+        crop_image = crop_image.to(dtype=torch.float32)
+        crop_image = torch.div(crop_image, 255.0)
+        crop_image = torch.unsqueeze(crop_image, 0).contiguous()
+
+        io_binding = self.face_landmark_98_model.io_binding()
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
+
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i])
+
+        # Sync and run model
+        syncvec = self.syncvec.cpu()
+        self.face_landmark_98_model.run_with_iobinding(io_binding)
+        landmarks_xyscore = io_binding.copy_outputs_to_cpu()[0]
+
+        landmark = []
+        landmark_score = []
+        if len(landmarks_xyscore) > 0:
+            for one_face_landmarks in landmarks_xyscore:
+                landmark_score = one_face_landmarks[:, [2]].reshape(-1)
+                landmark = one_face_landmarks[:, [0, 1]].reshape(-1,2)
+
+                ##recorver, and grouped as [98,2]
+                landmark[:, 0] = landmark[:, 0] * detail[1] + detail[3] - detail[4]
+                landmark[:, 1] = landmark[:, 1] * detail[0] + detail[2] - detail[4]
+                '''
+                landmark[:, 0] = landmark[:, 0] * w
+                landmark[:, 1] = landmark[:, 1] * h
+                IM = cv2.invertAffineTransform(M)
+                landmark = faceutil.trans_points2d(landmark, IM)
+                '''
+                if convert98_5:
+                    landmark, landmark_score = faceutil.convert_face_landmark_98_to_5(landmark, landmark_score)
+
+            #faceutil.test_bbox_landmarks(img, bbox, landmark)
+
+        return landmark, landmark_score
+
+    def detect_face_landmark_106(self, img, bbox, det_kpss, convert106_5=True):
+        input_name = self.face_landmark_106_model.get_inputs()[0].name
+
+        outputs = self.face_landmark_106_model.get_outputs()
+        output_names = []
+        for out in outputs:
+            output_names.append(out.name)
+        assert len(output_names)==1
+
+        w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
+        center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
+        rotate = 0
+        _scale = 192  / (max(w, h)*1.5)
+        #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
+        aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
+        #aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, self.arcface_dst, image_size=192)
+        '''
+        cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        '''
+        aimg = torch.unsqueeze(aimg, 0).contiguous()
+        aimg = aimg.to(dtype=torch.float32)
+        aimg = self.normalize(aimg)
+        io_binding = self.face_landmark_106_model.io_binding()
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i])
+
+        # Sync and run model
+        syncvec = self.syncvec.cpu()
+        self.face_landmark_106_model.run_with_iobinding(io_binding)
+        pred = io_binding.copy_outputs_to_cpu()[0][0]
+
+        if pred.shape[0] >= 3000:
+            pred = pred.reshape((-1, 3))
+        else:
+            pred = pred.reshape((-1, 2))
+
+        if 106 < pred.shape[0]:
+            pred = pred[106*-1:,:]
+
+        pred[:, 0:2] += 1
+        pred[:, 0:2] *= (192 // 2)
+        if pred.shape[1] == 3:
+            pred[:, 2] *= (192 // 2)
+
+        IM = cv2.invertAffineTransform(M)
+        pred = faceutil.trans_points(pred, IM)
+
+        if pred is not None:
+            if convert106_5:
+                # convert from 106 to 5 keypoints
+                pred = faceutil.convert_face_landmark_106_to_5(pred)
+
+        #faceutil.test_bbox_landmarks(img, bbox, pred)
+
+        return pred, []
+
+    def detect_face_landmark_478(self, img, bbox, det_kpss, convert478_5=True):
+        input_name = self.face_landmark_478_model.get_inputs()[0].name
+
+        outputs = self.face_landmark_478_model.get_outputs()
+        output_names = []
+        for out in outputs:
+            output_names.append(out.name)
+
+        w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
+        center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
+        rotate = 0
+        _scale = 256.0  / (max(w, h)*1.3)
+        #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
+        aimg, M = faceutil.transform(img, center, 256, _scale, rotate)
+        #aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, self.arcface_dst, image_size=256)
+        '''
+        cv2.imshow('image', aimg.permute(1,2,0).to('cpu').numpy())
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        '''
+        aimg = torch.unsqueeze(aimg, 0).contiguous()
+        aimg = aimg.to(dtype=torch.float32)
+        aimg = torch.div(aimg, 255.0)
+        io_binding = self.face_landmark_478_model.io_binding()
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+
+        for i in range(len(output_names)):
+            io_binding.bind_output(output_names[i])
+
+        # Sync and run model
+        syncvec = self.syncvec.cpu()
+        self.face_landmark_478_model.run_with_iobinding(io_binding)
+        landmarks, faceflag, blendshapes = io_binding.copy_outputs_to_cpu()
+        landmarks = landmarks.reshape( (1,478,3))
+        #landmarks = landmarks[...,0:2]
+
+        landmark = []
+        if len(landmarks) > 0:
+            for one_face_landmarks in landmarks:
+                landmark = one_face_landmarks[:, [0, 1]].reshape(-1,2)
+
+                IM = cv2.invertAffineTransform(M)
+                landmark = faceutil.trans_points2d(landmark, IM)
+
+                if landmark is not None:
+                    if convert478_5:
+                        # convert from 478 to 5 keypoints
+                        landmark = faceutil.convert_face_landmark_478_to_5(landmark)
+
+            #faceutil.test_bbox_landmarks(img, bbox, landmark)
+            #faceutil.test_bbox_landmarks(img, bbox, det_kpss)
+
+        return landmark, []
 
     def recognize(self, img, face_kps):
-        # Find transform
-        tform = trans.SimilarityTransform()
-        tform.estimate(face_kps, self.arcface_dst)
-
-        # Transform
-        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0), interpolation=v2.InterpolationMode.BILINEAR )
-        img = v2.functional.crop(img, 0,0, 112, 112)
+        img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, self.arcface_dst, 112)
         cropped_image = img
 
         # Switch to BGR and normalize
