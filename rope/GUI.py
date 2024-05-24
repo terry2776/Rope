@@ -578,7 +578,7 @@ class GUI(tk.Tk):
         self.widget['DetectTypeTextSel'] = GE.TextSelection(parameters_canvas, 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta 
         self.widget['DetectScoreSlider'] = GE.Slider2(parameters_canvas, 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta 
+        row += row_delta
         self.widget['RecordTypeTextSel'] = GE.TextSelection(parameters_canvas, 'RecordTypeTextSel', 'Record Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta 
         self.widget['VideoQualSlider'] = GE.Slider2(parameters_canvas, 'VideoQualSlider', 'FFMPEG Quality', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
@@ -958,7 +958,6 @@ class GUI(tk.Tk):
 
                         img = img.permute(2,0,1)
                         try: 
-                            #bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1)[0] # Just one face here
                             bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1) # Just one face here
                             kpss = kpss[0]
                         except IndexError:
