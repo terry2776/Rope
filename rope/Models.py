@@ -800,7 +800,7 @@ class Models():
         tform.estimate(face_kps, self.arcface_dst)
 
         # Transform
-        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) )
+        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0), interpolation=v2.InterpolationMode.BILINEAR )
         img = v2.functional.crop(img, 0,0, 112, 112)
         cropped_image = img
 
