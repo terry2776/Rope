@@ -18,7 +18,6 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 torch.set_grad_enabled(False)
 onnxruntime.set_default_logger_severity(4)
-
 # import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 
 device = 'cuda'
@@ -498,9 +497,6 @@ class VideoManager():
                     item['ThreadTime'] = time.time() - item['ThreadTime']
                     break
 
-
-
-
     # @profile
     def swap_video(self, target_image, frame_number, use_markers):   
         # Grab a local copy of the parameters to prevent threading issues
@@ -553,9 +549,7 @@ class VideoManager():
         for i in range(kpss.shape[0]):
             if kpss is not None:
                 face_kps = kpss[i]
-
             face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps)
-
             ret.append([face_kps, face_emb])
         
         if ret:
@@ -1159,13 +1153,11 @@ class VideoManager():
         diff = torch.sum(diff, dim=2)
         diff = torch.unsqueeze(diff, 2)
         diff[diff>0] = 1
-        
+
         diff = diff.permute(2,0,1)
 
         return diff    
-    
 
-    
     def clear_mem(self):
         del self.swapper_model
         del self.GFPGAN_model
