@@ -813,10 +813,10 @@ class Models():
         # Transform
         img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) )
         img = v2.functional.crop(img, 0,0, 112, 112)
+        cropped_image = img
 
         # Switch to BGR and normalize
         img = img.permute(1,2,0) #112,112,3
-        cropped_image = img
         img = img[:, :, [2,1,0]]
         img = torch.sub(img, 127.5)
         img = torch.div(img, 127.5)   

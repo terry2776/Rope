@@ -938,6 +938,8 @@ class GUI(tk.Tk):
                     img = cv2.imread(file)                    
 
                     if img is not None:     
+                        # convert to RGB format
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         img = torch.from_numpy(img.astype('uint8')).to('cuda')
 
                         pad_scale = 0.2
@@ -963,8 +965,9 @@ class GUI(tk.Tk):
                             print('Image cropped too close:', file) 
                         else:
                             face_emb, cropped_image = self.models.run_recognize(img, kpss)
-                            crop = cv2.cvtColor(cropped_image.cpu().numpy(), cv2.COLOR_BGR2RGB)
-                            crop = cv2.resize(crop, (85, 85))
+                            # PIL follows RGB color convention and cropped image come in RGB format
+                            crop = torchvision.transforms.functional.to_pil_image(cropped_image)
+                            crop = crop.resize((85, 85))
                             faces.append([crop, face_emb])
 
                     else:
@@ -986,7 +989,7 @@ class GUI(tk.Tk):
             
             shift_i = i+ shift_i_len
         
-            self.source_faces[shift_i]["Image"] = ImageTk.PhotoImage(image=Image.fromarray(faces[i][0]))
+            self.source_faces[shift_i]["Image"] = ImageTk.PhotoImage(image=faces[i][0])
             self.source_faces[shift_i]["Embedding"] = faces[i][1]
             self.source_faces[shift_i]["TKButton"] = tk.Button(self.source_faces_canvas, style.media_button_off_3, image= self.source_faces[shift_i]["Image"], height = 90, width = 90)
             self.source_faces[shift_i]["ButtonState"] = False
@@ -1036,7 +1039,8 @@ class GUI(tk.Tk):
                     
                     # If we dont find any existing simularities, it means that this is a new face and should be added to our found faces
                     if not found:
-                        crop = cv2.resize(face[2].cpu().numpy(), (82, 82))
+                        crop = torchvision.transforms.functional.to_pil_image(face[2])
+                        crop = crop.resize((82, 82))
 
                         new_target_face = self.target_face.copy()
                         self.target_faces.append(new_target_face)
@@ -1045,7 +1049,7 @@ class GUI(tk.Tk):
                         self.target_faces[last_index]["TKButton"] = tk.Button(self.found_faces_canvas, style.media_button_off_3, height = 86, width = 86)
                         self.target_faces[last_index]["TKButton"].bind("<MouseWheel>", self.target_faces_mouse_wheel)
                         self.target_faces[last_index]["ButtonState"] = False           
-                        self.target_faces[last_index]["Image"] = ImageTk.PhotoImage(image=Image.fromarray(crop))
+                        self.target_faces[last_index]["Image"] = ImageTk.PhotoImage(image=crop)
                         self.target_faces[last_index]["Embedding"] = face[1]
                         self.target_faces[last_index]["EmbeddingNumber"] = 1
                         
