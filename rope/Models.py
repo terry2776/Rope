@@ -659,15 +659,13 @@ class Models():
         # Switch to BGR
         img = img.permute(1,2,0)
         img = img[:, :, [2,1,0]]
-        #img = img.permute(2,0,1)
-        #
-        #img = img.permute(1,2,0)
 
         image = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
         image[:new_height, :new_width, :] = img
-        
-        blob =  torch.from_numpy(np.transpose(image.to('cpu').numpy(), [2, 0, 1]).astype(np.float32)[np.newaxis, ...].copy()).to('cuda')
-        #blob = torch.from_numpy((image.permute(2, 0, 1).to(dtype=torch.float32).unsqueeze(0)).to('cpu').numpy().copy()).to('cuda')
+
+        image = image.permute(2, 0, 1)
+        image = torch.unsqueeze(image, 0).contiguous()
+        image = image.to(dtype=torch.float32)
         
         input_name = self.yunet_model.get_inputs()[0].name
         outputs = self.yunet_model.get_outputs()
@@ -676,14 +674,14 @@ class Models():
             output_names.append(o.name)
    
         io_binding = self.yunet_model.io_binding() 
-        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=blob.size(), buffer_ptr=blob.data_ptr())
+        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=image.size(), buffer_ptr=image.data_ptr())
         
         for i in range(len(output_names)):
             io_binding.bind_output(output_names[i]) 
         
         # Sync and run model
         syncvec = self.syncvec.cpu()        
-        self.yunet_model.run_with_iobinding(io_binding)       
+        self.yunet_model.run_with_iobinding(io_binding)
         net_outs = io_binding.copy_outputs_to_cpu()
         
         strides = [8, 16, 32]
