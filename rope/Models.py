@@ -614,8 +614,12 @@ class Models():
 
         if keep_indices.any():
             bbox_raw, kps_raw, score_raw = bbox_raw[keep_indices], kps_raw[keep_indices], score_raw[keep_indices]
+
+            bbox_raw = bbox_raw * scale
+
             for bbox in bbox_raw:
                 bbox_list.append(np.array([(bbox[0]-bbox[2]/2), (bbox[1]-bbox[3]/2), (bbox[0]+bbox[2]/2), (bbox[1]+bbox[3]/2)]))
+            
             kps_raw = kps_raw * scale
 
             for kps in kps_raw:
