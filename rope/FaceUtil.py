@@ -8,6 +8,13 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 from numpy.linalg import norm as l2norm
 
+arcface_src = np.array(
+    [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+     [41.5493, 92.3655], [70.7299, 92.2041]],
+    dtype=np.float32)
+
+arcface_src = np.expand_dims(arcface_src, axis=0)
+
 def transform(img, center, output_size, scale, rotation):
     scale_ratio = scale
     rot = float(rotation) * np.pi / 180.0
@@ -132,6 +139,7 @@ def warp_face_by_bounding_box(img, bboxes, image_size=112):
 
     return img, M
 
+'''
 def warp_face_by_face_landmark_5(img, kpss, arcface_dst, image_size=112):
     # Find transform 
     dst = float(image_size) / 112.0 * arcface_dst
@@ -145,6 +153,53 @@ def warp_face_by_face_landmark_5(img, kpss, arcface_dst, image_size=112):
     M = tform.params[0:2]
 
     return img, M
+'''
+
+def warp_face_by_face_landmark_5(img, kpss, image_size=112, custom_arcface_src = None):
+    M, pose_index = estimate_norm(kpss, image_size, custom_arcface_src)
+    #warped = cv2.warpAffine(img, M, (image_size, image_size), borderValue=0.0)
+    t = trans.SimilarityTransform()
+    t.params[0:2] = M
+    img = v2.functional.affine(img, t.rotation*57.2958, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
+    img = v2.functional.crop(img, 0,0, image_size, image_size)
+    return img, M
+
+# lmk is prediction; src is template
+def estimate_norm(lmk, image_size=112, custom_arcface_src = None):
+    assert lmk.shape == (5, 2)
+    tform = trans.SimilarityTransform()
+    lmk_tran = np.insert(lmk, 2, values=np.ones(5), axis=1)
+    min_M = []
+    min_index = []
+    min_error = float('inf')
+
+    if custom_arcface_src is None:
+        if image_size == 112:
+            src = arcface_src
+        else:
+            src = float(image_size) / 112 * arcface_src
+    else:
+        src = custom_arcface_src
+
+    for i in np.arange(src.shape[0]):
+        tform.estimate(lmk, src[i])
+        M = tform.params[0:2, :]
+        results = np.dot(M, lmk_tran.T)
+        results = results.T
+        error = np.sum(np.sqrt(np.sum((results - src[i])**2, axis=1)))
+        #         print(error)
+        if error < min_error:
+            min_error = error
+            min_M = M
+            min_index = i
+    return min_M, min_index
+
+def invertAffineTransform(M):
+    t = trans.SimilarityTransform()
+    t.params[0:2] = M
+    IM = t.inverse.params[0:2, :]
+
+    return IM
 
 def warp_face_by_bounding_box_for_landmark_68(img, bbox, input_size):
     """
