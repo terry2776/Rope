@@ -658,7 +658,7 @@ class VideoManager():
         original_face_512 = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0), interpolation=v2.InterpolationMode.BILINEAR )
         original_face_512 = v2.functional.crop(original_face_512, 0,0, 512, 512)# 3, 512, 512
         original_face_256 = t256(original_face_512)
-        original_face_128 = t128(original_face_256)  
+        original_face_128 = t128(original_face_512)  
 
         latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
 

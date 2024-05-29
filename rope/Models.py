@@ -531,9 +531,6 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
-        # delete score column
-        det = np.delete(det, 4, 1)
-
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
             det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
@@ -551,14 +548,18 @@ class Models():
             if kpss is not None:
                 kpss = kpss[bindex, :]
 
+        score_values = det[:, 4]
+        # delete score column
+        det = np.delete(det, 4, 1)
+
         if use_lankmark_detection and len(kpss) > 0:
             for i in range(kpss.shape[0]):
                 landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score)
                 if len(landmark_kpss) > 0:
                     if len(landmark_scores) > 0:
                         #print(np.mean(landmark_scores))
-                        #print(np.mean(scoresb[i]))
-                        if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                        #print(np.mean(score_values[i]))
+                        if np.mean(landmark_scores) > np.mean(score_values[i]):
                             kpss[i] = landmark_kpss
                     else:
                         kpss[i] = landmark_kpss
@@ -753,9 +754,6 @@ class Models():
             kpss_ave.append(np.mean(kpss[people[person], :, :], axis=0).tolist())
 
 
-        # delete score column
-        det = np.delete(det, 4, 1)
-
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
             det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
@@ -774,6 +772,9 @@ class Models():
                 kpss = kpss[bindex, :]
 
         # return kpss_ave
+
+        # delete score column
+        det = np.delete(det, 4, 1)
 
         return kpss_ave
 
@@ -928,9 +929,6 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
-        # delete score column
-        det = np.delete(det, 4, 1)
-
         if max_num > 0 and det.shape[0] > max_num:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] -
                                                     det[:, 1])
@@ -949,14 +947,18 @@ class Models():
             if kpss is not None:
                 kpss = kpss[bindex, :]
 
+        score_values = det[:, 4]
+        # delete score column
+        det = np.delete(det, 4, 1)
+
         if use_lankmark_detection and len(kpss) > 0:
             for i in range(kpss.shape[0]):
                 landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score)
                 if len(landmark_kpss) > 0:
                     if len(landmark_scores) > 0:
                         #print(np.mean(landmark_scores))
-                        #print(np.mean(scoresb[i]))
-                        if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                        #print(np.mean(score_values[i]))
+                        if np.mean(landmark_scores) > np.mean(score_values[i]):
                             kpss[i] = landmark_kpss
                     else:
                         kpss[i] = landmark_kpss
@@ -1394,6 +1396,7 @@ class Models():
 
         kpss = kpss[keep, :]
         bboxes = pre_det[keep, :]
+        score_values = bboxes[:, 4]
 
         bbox_list = []
         kps_list = []
@@ -1410,8 +1413,8 @@ class Models():
                     if len(landmark_kpss) > 0:
                         if len(landmark_scores) > 0:
                             #print(np.mean(landmark_scores))
-                            #print(np.mean(scoresb[i]))
-                            if np.mean(landmark_scores) > np.mean(scoresb[i]):
+                            #print(np.mean(score_values[i]))
+                            if np.mean(landmark_scores) > np.mean(score_values[i]):
                                 kps = landmark_kpss
                         else:
                             kps = landmark_kpss
@@ -1511,8 +1514,9 @@ class Models():
         if pred.shape[1] == 3:
             pred[:, 2] *= (192 // 2)
 
-        IM = cv2.invertAffineTransform(M)
-        pred = faceutil.trans_points(pred, IM)
+        #IM = cv2.invertAffineTransform(M)
+        IM = faceutil.invertAffineTransform(M)
+        pred = faceutil.trans_points3d(pred, IM)
 
         # at moment we don't use 3d points
         '''
@@ -1521,6 +1525,7 @@ class Models():
         rx, ry, rz = faceutil.matrix2angle(R)
         pose = np.array( [rx, ry, rz], dtype=np.float32 ) #pitch, yaw, roll
         '''
+
         # convert from 3d68 to 2d68 keypoints
         landmark2d68 = np.array(pred[:, [0, 1]])
 
@@ -1637,7 +1642,8 @@ class Models():
         if pred.shape[1] == 3:
             pred[:, 2] *= (192 // 2)
 
-        IM = cv2.invertAffineTransform(M)
+        #IM = cv2.invertAffineTransform(M)
+        IM = faceutil.invertAffineTransform(M)
         pred = faceutil.trans_points(pred, IM)
 
         if pred is not None:
@@ -1660,10 +1666,10 @@ class Models():
         w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
         center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
         rotate = 0
-        _scale = 256.0  / (max(w, h)*1.3)
+        _scale = 256.0  / (max(w, h)*1.5)
         #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
+        
         aimg, M = faceutil.transform(img, center, 256, _scale, rotate)
-        #aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=256)
         '''
         cv2.imshow('image', aimg.permute(1,2,0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1683,16 +1689,22 @@ class Models():
         self.face_landmark_478_model.run_with_iobinding(io_binding)
         landmarks, faceflag, blendshapes = io_binding.copy_outputs_to_cpu()
         landmarks = landmarks.reshape( (1,478,3))
-        #landmarks = landmarks[...,0:2]
 
         landmark = []
         landmark_score = []
         if len(landmarks) > 0:
             for one_face_landmarks in landmarks:
-                landmark = one_face_landmarks[:, [0, 1]].reshape(-1,2)
-
-                IM = cv2.invertAffineTransform(M)
-                landmark = faceutil.trans_points2d(landmark, IM)
+                landmark = one_face_landmarks
+                #IM = cv2.invertAffineTransform(M)
+                IM = faceutil.invertAffineTransform(M)
+                landmark = faceutil.trans_points3d(landmark, IM)
+                '''
+                P = faceutil.estimate_affine_matrix_3d23d(self.mean_lmk, landmark)
+                s, R, t = faceutil.P2sRt(P)
+                rx, ry, rz = faceutil.matrix2angle(R)
+                pose = np.array( [rx, ry, rz], dtype=np.float32 ) #pitch, yaw, roll
+                '''
+                landmark = landmark[:, [0, 1]].reshape(-1,2)
 
                 if landmark is not None:
                     #get scores
@@ -1718,10 +1730,11 @@ class Models():
             #faceutil.test_bbox_landmarks(img, bbox, landmark)
             #faceutil.test_bbox_landmarks(img, bbox, det_kpss)
 
-        return landmark, landmark_score
+        #return landmark, landmark_score
+        return landmark, []
 
     def recognize(self, img, face_kps):
-        #img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, 112)
+        #img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, 128)
         # Find transform
         dst = self.arcface_dst.copy()
         dst[:, 0] += 8.0

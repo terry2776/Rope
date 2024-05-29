@@ -337,10 +337,10 @@ def convert_face_landmark_106_to_5(face_landmark_106):
 def convert_face_landmark_478_to_5(face_landmark_478):
     face_landmark_5 = np.array(
     [
-        #face_landmark_478[468], # eye left
-        np.array([(face_landmark_478[159][0] + face_landmark_478[145][0]) / 2, (face_landmark_478[159][1] + face_landmark_478[145][1]) / 2]), # eye left (145-159)
-        #face_landmark_478[473], # eye-right
-        np.array([(face_landmark_478[386][0] + face_landmark_478[374][0]) / 2, (face_landmark_478[386][1] + face_landmark_478[374][1]) / 2]), # eye-right (374-386)
+        face_landmark_478[468], # eye left
+        #np.array([(face_landmark_478[159][0] + face_landmark_478[145][0]) / 2, (face_landmark_478[159][1] + face_landmark_478[145][1]) / 2]), # eye left (145-159)
+        face_landmark_478[473], # eye-right
+        #np.array([(face_landmark_478[386][0] + face_landmark_478[374][0]) / 2, (face_landmark_478[386][1] + face_landmark_478[374][1]) / 2]), # eye-right (374-386)
         face_landmark_478[4], # nose, 4, 1
         face_landmark_478[61], # lip left ? 61, 57
         face_landmark_478[291]  # lip right ? 291, 287

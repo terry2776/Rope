@@ -980,7 +980,7 @@ class GUI(tk.Tk):
                 if file_type == 'image':
                     img = cv2.imread(file)
 
-                    if img is not None:     
+                    if img is not None:
                         # convert to RGB format
                         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         img = torch.from_numpy(img.astype('uint8')).to('cuda')
