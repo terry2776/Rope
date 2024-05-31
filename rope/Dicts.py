@@ -177,6 +177,8 @@ DEFAULT_DATA = {
 #
 'LandmarksDetectionAdjSwitchInfoText': 'KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the face landmarks found by the detector. ',
 'LandmarksDetectionAdjSwitchState':    False,
+'LandmarksAlignModeFromPointsSwitchInfoText': 'KPS ADJUSTMENT ALIGN MODE FROM POINTS:\nThis is an experimental feature to perform direct adjustments to the face landmarks found from detector key points.',
+'LandmarksAlignModeFromPointsSwitchState':    False,
 #
 'FaceParserSwitchInfoText':         'BACKGROUND MASK:\nAllow the unprocessed background from the orginal image to show in the final swap.',
 'FaceParserSwitchState':            False,
@@ -350,7 +352,7 @@ DEFAULT_DATA = {
 'RestorerDetTypeTextSelModes':      ['Original', 'Blend', 'Reference'],  
 'RestorerTypeTextSelInfoText':      'RESTORER TYPE:\nSelect the Restorer type.\nSpeed: GPEN256>GFPGAN>CF>GPEN512',
 'RestorerTypeTextSelMode':          'GFPGAN',
-'RestorerTypeTextSelModes':         ['GFPGAN', 'CF', 'GPEN256', 'GPEN512'],
+'RestorerTypeTextSelModes':         ['GFPGAN', 'CF', 'GPEN256', 'GPEN512', 'GPEN1024'],
 'MergeTextSelInfoText':      'INPUT FACES MERGE MATH:\nWhen shift-clicking face for merging, determines how the embedding vectors are combined.',
 'MergeTextSelMode':          'Mean',
 'MergeTextSelModes':         ['Mean', 'Median'],

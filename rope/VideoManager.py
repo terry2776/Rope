@@ -549,7 +549,7 @@ class VideoManager():
             img = v2.functional.rotate(img, angle=parameters['OrientSlider'], interpolation=v2.InterpolationMode.BILINEAR, expand=True)
 
         # Find all faces in frame and return a list of 5-pt kpss
-        bboxes, kpss = self.func_w_test("detect", self.models.run_detect, img, parameters['DetectTypeTextSel'], max_num=20, score=parameters['DetectScoreSlider']/100.0, use_lankmark_detection=parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=parameters["LandmarksDetectTypeTextSel"], landmark_score=parameters["LandmarksDetectScoreSlider"]/100.0)
+        bboxes, kpss = self.func_w_test("detect", self.models.run_detect, img, parameters['DetectTypeTextSel'], max_num=20, score=parameters['DetectScoreSlider']/100.0, use_landmark_detection=parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=parameters["LandmarksDetectTypeTextSel"], landmark_score=parameters["LandmarksDetectScoreSlider"]/100.0, from_points=parameters["LandmarksAlignModeFromPointsSwitch"])
 
         # Get embeddings for all faces found in the frame
         ret = []
@@ -658,7 +658,7 @@ class VideoManager():
         original_face_512 = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0), interpolation=v2.InterpolationMode.BILINEAR )
         original_face_512 = v2.functional.crop(original_face_512, 0,0, 512, 512)# 3, 512, 512
         original_face_256 = t256(original_face_512)
-        original_face_128 = t128(original_face_512)  
+        original_face_128 = t128(original_face_512)
 
         latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
 
@@ -1109,8 +1109,9 @@ class VideoManager():
     def apply_restorer(self, swapped_face_upscaled, parameters):     
         temp = swapped_face_upscaled
         t512 = v2.Resize((512, 512), antialias=False)
-        t256 = v2.Resize((256, 256), antialias=False)  
-        
+        t256 = v2.Resize((256, 256), antialias=False)
+        t1024 = v2.Resize((1024, 1024), antialias=False)
+
         # If using a separate detection mode
         if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
             if parameters['RestorerDetTypeTextSel'] == 'Blend':
@@ -1153,7 +1154,11 @@ class VideoManager():
         elif parameters['RestorerTypeTextSel'] == 'GPEN512':
             self.models.run_GPEN_512(temp, outpred) 
 
-        
+        elif parameters['RestorerTypeTextSel'] == 'GPEN1024':
+            temp = t1024(temp)
+            outpred = torch.empty((1, 3, 1024, 1024), dtype=torch.float32, device=device).contiguous()
+            self.models.run_GPEN_1024(temp, outpred)
+
         # Format back to cxHxW @ 255
         outpred = torch.squeeze(outpred)      
         outpred = torch.clamp(outpred, -1, 1)
@@ -1162,7 +1167,8 @@ class VideoManager():
         outpred = torch.mul(outpred, 255)
         if parameters['RestorerTypeTextSel'] == 'GPEN256':
             outpred = t512(outpred)
-            
+        elif parameters['RestorerTypeTextSel'] == 'GPEN1024':
+            outpred = t512(outpred)
         # Invert Transform
         if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
             outpred = v2.functional.affine(outpred, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
@@ -1206,6 +1212,7 @@ class VideoManager():
         del self.codeformer_model
         del self.GPEN_256_model
         del self.GPEN_512_model
+        del self.GPEN_1024_model
         del self.resnet_model
         del self.detection_model
         del self.recognition_model
@@ -1217,6 +1224,7 @@ class VideoManager():
         self.codeformer_model = []
         self.GPEN_256_model = []
         self.GPEN_512_model = []
+        self.GPEN_1024_model = []
         self.resnet_model = []
         self.detection_model = []
         self.recognition_model = []

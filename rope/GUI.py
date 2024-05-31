@@ -467,11 +467,11 @@ class GUI(tk.Tk):
         # Restore
         self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, 1, row)
         row += switch_delta
-        self.widget['RestorerTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        self.widget['RestorerTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
-        self.widget['RestorerDetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerDetTypeTextSel', 'Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        self.widget['RestorerDetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerDetTypeTextSel', 'Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
-        self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
         row += top_border_delta
         self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
         row += bottom_border_delta
@@ -593,6 +593,8 @@ class GUI(tk.Tk):
         row += bottom_border_delta
         self.widget['LandmarksDetectionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksDetectionAdjSwitch', 'Landmarks Detection Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
         row += switch_delta
+        self.widget['LandmarksAlignModeFromPointsSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksAlignModeFromPointsSwitch', 'From Points', 3, self.update_data, 'parameter', 398, 20, 1, row, 30, 40)
+        row += switch_delta
         self.widget['LandmarksDetectTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'LandmarksDetectTypeTextSel', 'Landmarks Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['LandmarksDetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LandmarksDetectScoreSlider', 'Landmarks Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
@@ -678,10 +680,10 @@ class GUI(tk.Tk):
             self.control[name] =  self.widget[name].get()
             self.add_action('control', self.control)
 
-            if use_markers:
-                self.add_action('get_requested_video_frame', self.video_slider.get())
-            else:
-                self.add_action('get_requested_video_frame_without_markers', self.video_slider.get())
+        if use_markers:
+            self.add_action('get_requested_video_frame', self.video_slider.get())
+        else:
+            self.add_action('get_requested_video_frame_without_markers', self.video_slider.get())
 
     def callback(self, url):
         webbrowser.open_new_tab(url)
@@ -1001,7 +1003,7 @@ class GUI(tk.Tk):
 
                         img = img.permute(2,0,1)
                         try:
-                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1, score=0.5, use_lankmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=0.5) # Just one face here
+                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1, score=0.5, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=0.5, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"]) # Just one face here
                             kpss = kpss[0]
                         except IndexError:
                             print('Image cropped too close:', file)
@@ -1037,7 +1039,7 @@ class GUI(tk.Tk):
         try:
             img = torch.from_numpy(self.video_image).to('cuda')
             img = img.permute(2,0,1)
-            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0, use_lankmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=self.parameters["LandmarksDetectScoreSlider"]/100.0)
+            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=self.parameters["LandmarksDetectScoreSlider"]/100.0, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"])
 
             ret = []
             for face_kps in kpss:

@@ -139,33 +139,24 @@ def warp_face_by_bounding_box(img, bboxes, image_size=112):
 
     return img, M
 
-'''
-def warp_face_by_face_landmark_5(img, kpss, arcface_dst, image_size=112):
-    # Find transform 
-    dst = float(image_size) / 112.0 * arcface_dst
+def warp_face_by_face_landmark_5(img, kpss, image_size=112, normalized = False, interpolation=v2.InterpolationMode.BILINEAR, custom_arcface_src = None):
+    w, h = math.ceil(img.size(dim=2)), math.ceil(img.size(dim=1))
+    if w < image_size or h < image_size:
+        # add right, bottom pading to the image if its size is less than image_size value
+        add = image_size - min(w, h)
+        img = torch.nn.functional.pad(img, (0, add, 0, add), 'constant', 0)
 
-    tform = trans.SimilarityTransform()
-    tform.estimate(kpss, dst)
-
-    # Transform
-    img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) ) 
-    img = v2.functional.crop(img, 0,0, image_size, image_size)
-    M = tform.params[0:2]
-
-    return img, M
-'''
-
-def warp_face_by_face_landmark_5(img, kpss, image_size=112, custom_arcface_src = None):
-    M, pose_index = estimate_norm(kpss, image_size, custom_arcface_src)
+    M, pose_index = estimate_norm(kpss, image_size, normalized, custom_arcface_src)
     #warped = cv2.warpAffine(img, M, (image_size, image_size), borderValue=0.0)
     t = trans.SimilarityTransform()
     t.params[0:2] = M
-    img = v2.functional.affine(img, t.rotation*57.2958, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
+    img = v2.functional.affine(img, t.rotation*57.2958, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=interpolation, center = (0, 0) )
     img = v2.functional.crop(img, 0,0, image_size, image_size)
+
     return img, M
 
 # lmk is prediction; src is template
-def estimate_norm(lmk, image_size=112, custom_arcface_src = None):
+def estimate_norm(lmk, image_size=112, normalized = False, custom_arcface_src = None):
     assert lmk.shape == (5, 2)
     tform = trans.SimilarityTransform()
     lmk_tran = np.insert(lmk, 2, values=np.ones(5), axis=1)
@@ -174,10 +165,15 @@ def estimate_norm(lmk, image_size=112, custom_arcface_src = None):
     min_error = float('inf')
 
     if custom_arcface_src is None:
-        if image_size == 112:
-            src = arcface_src
+        if normalized == False:
+            if image_size == 112:
+                src = arcface_src
+            else:
+                src = float(image_size) / 112.0 * arcface_src
         else:
-            src = float(image_size) / 112 * arcface_src
+            factor = float(image_size) / 128.0
+            src = arcface_src * factor
+            src[:, 0] += (factor * 8.0)
     else:
         src = custom_arcface_src
 
@@ -349,24 +345,27 @@ def convert_face_landmark_478_to_5(face_landmark_478):
     return face_landmark_5
 
 def test_bbox_landmarks(img, bbox, kpss):
-        image = img.permute(1,2,0).to('cpu').numpy()
-        box = bbox.astype(int)
-        color = (255, 0, 0)
-        cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), color, 2)
+        image = img.permute(1,2,0).to('cpu').numpy().copy()
+        if len(bbox) > 0:
+            box = bbox.astype(int)
+            color = (255, 0, 0)
+            cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), color, 2)
         
-        for i in range(kpss.shape[0]):
-            kps = kpss[i].astype(int)
-            color = (0, 0, 255)
-            cv2.circle(image, (kps[0], kps[1]), 1, color,
-                       2)
+        if len(kpss) > 0:
+            for i in range(kpss.shape[0]):
+                kps = kpss[i].astype(int)
+                color = (0, 0, 255)
+                cv2.circle(image, (kps[0], kps[1]), 1, color,
+                           2)
 
         cv2.imshow('image', image) 
         cv2.waitKey(0)         
         cv2.destroyAllWindows()
 
 def test_multi_bbox_landmarks(img, bboxes, kpss):
-    for i in range(np.array(kpss).shape[0]):
-        test_bbox_landmarks(img, bboxes[i], kpss[i])
+    if len(bboxes) > 0 and len(kpss) > 0:
+        for i in range(np.array(kpss).shape[0]):
+            test_bbox_landmarks(img, bboxes[i], kpss[i])
 
 def detect_img_color(img):
     frame = img.permute(1,2,0)

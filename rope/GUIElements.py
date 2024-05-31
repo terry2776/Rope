@@ -602,7 +602,7 @@ class TextSelection():
  
 
 class Switch2():
-    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y):
+    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, toggle_x=0, toggle_width=40):
         self.blank = tk.PhotoImage()
         self.default_data = DEFAULT_DATA
         # Capture inputs as instance variables
@@ -642,19 +642,21 @@ class Switch2():
         self.switch_frame.bind("<Enter>", lambda event: self.on_enter())
  
 
-        toggle_width = 40
+        #toggle_width = 40
         text_width = self.width-toggle_width
         
         # Toggle Switch
         self.switch = tk.Label(self.switch_frame, style.parameter_switch_3, image=self.icon_off, width=toggle_width, height=self.height)
         if self.state:
             self.switch.configure(image=self.icon_on)
-        self.switch.place(x=0, y=2)
+        #self.switch.place(x=0, y=2)
+        self.switch.place(x=toggle_x, y=2)
         self.switch.bind("<ButtonRelease-1>", lambda event: self.toggle_switch(event))
         
         # Text
         self.switch_text = tk.Label(self.switch_frame, style.parameter_switch_3, image=self.blank, compound='right', text=self.display_text, anchor='w', width=text_width, height=height-2)
-        self.switch_text.place(x=50, y=0)
+        #self.switch_text.place(x=50, y=0)
+        self.switch_text.place(x=toggle_x + toggle_width + 10, y=0)
 
     def toggle_switch(self, event, set_value=None, request_frame=True):
         # flip state
