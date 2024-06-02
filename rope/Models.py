@@ -116,7 +116,29 @@ class Models():
         kpss = []
         scores = []
 
-        if detect_mode=='68':
+        if detect_mode=='5':
+            if not self.resnet50_model:
+                self.resnet50_model = onnxruntime.InferenceSession("./models/res50.onnx", providers=self.providers)
+
+                feature_maps = [[64, 64], [32, 32], [16, 16]]
+                min_sizes = [[16, 32], [64, 128], [256, 512]]
+                steps = [8, 16, 32]
+                image_size = 512
+
+                for k, f in enumerate(feature_maps):
+                    min_size_array = min_sizes[k]
+                    for i, j in product(range(f[0]), range(f[1])):
+                        for min_size in min_size_array:
+                            s_kx = min_size / image_size
+                            s_ky = min_size / image_size
+                            dense_cx = [x * steps[k] / image_size for x in [j + 0.5]]
+                            dense_cy = [y * steps[k] / image_size for y in [i + 0.5]]
+                            for cy, cx in product(dense_cy, dense_cx):
+                                self.anchors += [cx, cy, s_kx, s_ky]
+
+            kpss, scores = self.detect_face_landmark_5(img, bbox=bbox, det_kpss=det_kpss, from_points=from_points)
+
+        elif detect_mode=='68':
             if not self.face_landmark_68_model:
                 self.face_landmark_68_model = onnxruntime.InferenceSession('.\\models\\2dfan4.onnx', providers=self.providers)
 
@@ -1328,7 +1350,7 @@ class Models():
         io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=image.size(), buffer_ptr=image.data_ptr())
 
         for i in range(len(output_names)):
-            io_binding.bind_output(output_names[i])
+            io_binding.bind_output(output_names[i], 'cuda')
 
         # Sync and run model
         syncvec = self.syncvec.cpu()
@@ -1436,6 +1458,79 @@ class Models():
                 kps_list.append(kps)
 
         return np.array(bbox_list), np.array(kps_list)
+
+    def detect_face_landmark_5(self, img, bbox, det_kpss, from_points=False):
+        if from_points == False:
+            w, h = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
+            center = (bbox[2] + bbox[0]) / 2, (bbox[3] + bbox[1]) / 2
+            rotate = 0
+            _scale = 512.0  / (max(w, h)*1.5)
+            image, M = faceutil.transform(img, center, 512, _scale, rotate)
+        else:
+            image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 512, normalized=True)
+
+        image = image.permute(1,2,0)
+
+        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device='cuda')
+        image = torch.sub(image, mean)
+
+        image = image.permute(2,0,1)
+        image = torch.reshape(image, (1, 3, 512, 512))
+
+        height, width = (512, 512)
+        tmp = [width, height, width, height, width, height, width, height, width, height]
+        scale1 = torch.tensor(tmp, dtype=torch.float32, device='cuda')
+
+        conf = torch.empty((1,10752,2), dtype=torch.float32, device='cuda').contiguous()
+        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device='cuda').contiguous()
+
+        io_binding = self.resnet50_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='conf', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
+        io_binding.bind_output(name='landmarks', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
+
+        torch.cuda.synchronize('cuda')
+        self.resnet50_model.run_with_iobinding(io_binding)
+
+        scores = torch.squeeze(conf)[:, 1]
+        priors = torch.tensor(self.anchors).view(-1, 4)
+        priors = priors.to('cuda')
+
+        pre = torch.squeeze(landmarks, 0)
+
+        tmp = (priors[:, :2] + pre[:, :2] * 0.1 * priors[:, 2:], priors[:, :2] + pre[:, 2:4] * 0.1 * priors[:, 2:], priors[:, :2] + pre[:, 4:6] * 0.1 * priors[:, 2:], priors[:, :2] + pre[:, 6:8] * 0.1 * priors[:, 2:], priors[:, :2] + pre[:, 8:10] * 0.1 * priors[:, 2:])
+        landmarks = torch.cat(tmp, dim=1)
+        landmarks = torch.mul(landmarks, scale1)
+
+        landmarks = landmarks.cpu().numpy()
+
+        # ignore low scores
+        score=.1
+        inds = torch.where(scores>score)[0]
+        inds = inds.cpu().numpy()  
+        scores = scores.cpu().numpy()  
+
+        landmarks, scores = landmarks[inds], scores[inds]    
+
+        # sort
+        order = scores.argsort()[::-1]
+
+        if len(order) > 0:
+            landmarks = landmarks[order][0]
+            scores = scores[order][0]
+
+            landmarks = np.array([[landmarks[i], landmarks[i + 1]] for i in range(0,10,2)])
+
+            IM = faceutil.invertAffineTransform(M)
+            landmarks = faceutil.trans_points2d(landmarks, IM)
+            scores = np.array([scores])
+            
+            #faceutil.test_bbox_landmarks(img, bbox, landmarks)
+            #print(scores)
+                    
+            return landmarks, scores
+
+        return [], []
 
     def detect_face_landmark_68(self, img, bbox, det_kpss, convert68_5=True, from_points=False):
         if from_points == False:

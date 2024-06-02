@@ -15,7 +15,19 @@ arcface_src = np.array(
 
 arcface_src = np.expand_dims(arcface_src, axis=0)
 
+def pad_image_by_size(img, image_size):
+    w, h = math.ceil(img.size(dim=2)), math.ceil(img.size(dim=1))
+    if w < image_size or h < image_size:
+        # add right, bottom pading to the image if its size is less than image_size value
+        add = image_size - min(w, h)
+        img = torch.nn.functional.pad(img, (0, add, 0, add), 'constant', 0)
+
+    return img
+
 def transform(img, center, output_size, scale, rotation):
+    # pad image by image size
+    img = pad_image_by_size(img, output_size)
+
     scale_ratio = scale
     rot = float(rotation) * np.pi / 180.0
     t1 = trans.SimilarityTransform(scale=scale_ratio)
@@ -122,6 +134,9 @@ def matrix2angle(R):
     return rx, ry, rz
 
 def warp_face_by_bounding_box(img, bboxes, image_size=112):
+    # pad image by image size
+    img = pad_image_by_size(img, image_size)
+
     # Set source points from bounding boxes
     source_points = np.array([ [ bboxes[0], bboxes[1] ], [ bboxes[2], bboxes[1] ], [ bboxes[0], bboxes[3] ], [ bboxes[2], bboxes[3] ] ]).astype(np.float32)
 
@@ -140,11 +155,8 @@ def warp_face_by_bounding_box(img, bboxes, image_size=112):
     return img, M
 
 def warp_face_by_face_landmark_5(img, kpss, image_size=112, normalized = False, interpolation=v2.InterpolationMode.BILINEAR, custom_arcface_src = None):
-    w, h = math.ceil(img.size(dim=2)), math.ceil(img.size(dim=1))
-    if w < image_size or h < image_size:
-        # add right, bottom pading to the image if its size is less than image_size value
-        add = image_size - min(w, h)
-        img = torch.nn.functional.pad(img, (0, add, 0, add), 'constant', 0)
+    # pad image by image size
+    img = pad_image_by_size(img, image_size)
 
     M, pose_index = estimate_norm(kpss, image_size, normalized, custom_arcface_src)
     #warped = cv2.warpAffine(img, M, (image_size, image_size), borderValue=0.0)
@@ -204,6 +216,8 @@ def warp_face_by_bounding_box_for_landmark_68(img, bbox, input_size):
     :param input_size: tuple input image size
     :return:
     """
+    # pad image by image size
+    img = pad_image_by_size(img, input_size[0])
 
     scale = 195 / np.subtract(bbox[2:], bbox[:2]).max()
     translation = (256 - np.add(bbox[2:], bbox[:2]) * scale) * 0.5
@@ -233,6 +247,9 @@ def warp_face_by_bounding_box_for_landmark_98(img, bbox_org, input_size):
     :param input_size: tuple input image size
     :return:
     """
+    # pad image by image size
+    img = pad_image_by_size(img, input_size[0])
+    
     ##preprocess
     bbox = bbox_org.copy()
     min_face = 20

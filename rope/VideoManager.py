@@ -596,17 +596,20 @@ class VideoManager():
 
         img = img.cpu().numpy()  
 
-        # if ret:
-        #
-        #     for kpoint in ret[0][0]:
-        #         for i in range(-1, 1):
-        #             for j in range(-1, 1):
-        #
-        #                 img[int(kpoint[1])+i][int(kpoint[0])+j][0] = 255
-        #                 img[int(kpoint[1])+i][int(kpoint[0])+j][1] = 255
-        #                 img[int(kpoint[1])+i][int(kpoint[0])+j][2] = 255
+        if parameters["ShowLandmarksSwitch"]:
+            if ret:
+                if img_y <= 720:
+                    p = 1
+                else:
+                    p = 2
+                for face in ret:
+                    for kpoint in face[0]:
+                        for i in range(-1, p):
+                            for j in range(-1, p):
+                                img[int(kpoint[1])+i][int(kpoint[0])+j][0] = 0
+                                img[int(kpoint[1])+i][int(kpoint[0])+j][1] = 255
+                                img[int(kpoint[1])+i][int(kpoint[0])+j][2] = 255
 
-        
         return img.astype(np.uint8)
 
     def findCosineDistance(self, vector1, vector2):

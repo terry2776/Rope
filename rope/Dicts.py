@@ -179,6 +179,8 @@ DEFAULT_DATA = {
 'LandmarksDetectionAdjSwitchState':    False,
 'LandmarksAlignModeFromPointsSwitchInfoText': 'KPS ADJUSTMENT ALIGN MODE FROM POINTS:\nThis is an experimental feature to perform direct adjustments to the face landmarks found from detector key points.',
 'LandmarksAlignModeFromPointsSwitchState':    False,
+'ShowLandmarksSwitchInfoText':      'Show Landmarks in realtime.',
+'ShowLandmarksSwitchState':         False,
 #
 'FaceParserSwitchInfoText':         'BACKGROUND MASK:\nAllow the unprocessed background from the orginal image to show in the final swap.',
 'FaceParserSwitchState':            False,
@@ -339,7 +341,7 @@ DEFAULT_DATA = {
 #
 'LandmarksDetectTypeTextSelInfoText': 'LANDMARKS FACE DETECTION MODEL:\nSelect the landmarks face detection model. Mostly only subtle differences, but can significant differences when the face is at extreme angles or covered.',
 'LandmarksDetectTypeTextSelMode':     '98',
-'LandmarksDetectTypeTextSelModes':    ['68', '3d68', '98', '106', '478'],
+'LandmarksDetectTypeTextSelModes':    ['5', '68', '3d68', '98', '106', '478'],
 #
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',
