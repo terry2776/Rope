@@ -602,13 +602,18 @@ class VideoManager():
                     p = 1
                 else:
                     p = 2
+
                 for face in ret:
                     for kpoint in face[0]:
                         for i in range(-1, p):
                             for j in range(-1, p):
-                                img[int(kpoint[1])+i][int(kpoint[0])+j][0] = 0
-                                img[int(kpoint[1])+i][int(kpoint[0])+j][1] = 255
-                                img[int(kpoint[1])+i][int(kpoint[0])+j][2] = 255
+                                try:
+                                    img[int(kpoint[1])+i][int(kpoint[0])+j][0] = 0
+                                    img[int(kpoint[1])+i][int(kpoint[0])+j][1] = 255
+                                    img[int(kpoint[1])+i][int(kpoint[0])+j][2] = 255
+                                except:
+                                    print("Key-points value {} exceed the image size {}.".format(kpoint, (img_x, img_y)))
+                                    continue
 
         return img.astype(np.uint8)
 
