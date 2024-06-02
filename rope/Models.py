@@ -1827,6 +1827,7 @@ class Models():
         return landmark, []
 
     def recognize(self, img, face_kps):
+        '''
         # Find transform
         dst = self.arcface_dst.copy()
         dst[:, 0] += 8.0
@@ -1838,6 +1839,14 @@ class Models():
         img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
         img = v2.functional.crop(img, 0,0, 128, 128)
         img = v2.Resize((112, 112), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)(img)
+        '''
+        # Find transform 
+        tform = trans.SimilarityTransform()
+        tform.estimate(face_kps, self.arcface_dst)
+
+        # Transform
+        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
+        img = v2.functional.crop(img, 0,0, 112, 112)
 
         cropped_image = img
         # Switch to BGR and normalize
