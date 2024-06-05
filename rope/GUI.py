@@ -25,6 +25,7 @@ from skimage import transform as trans
 from torchvision.transforms import v2
 
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
+from platform import system
 
 
 class GUI(tk.Tk):
@@ -111,8 +112,9 @@ class GUI(tk.Tk):
 
         script_dir = os.path.dirname(__file__)
         icon_path = os.path.join(script_dir, 'media', 'rope.ico')
-        if os.path.exists(icon_path):
-            self.iconbitmap(icon_path)
+        if system() != 'Linux':
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
 
         #endregion
 
