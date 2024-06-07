@@ -182,6 +182,10 @@ DEFAULT_DATA = {
 'DiffSwitchState':                  False,
 'FaceAdjSwitchInfoText':            'KPS and SCALE ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the face landmarks found by the detector. There is also an option to adjust the scale of the swapped face.',
 'FaceAdjSwitchState':               False,
+# Use Opal similarity
+'UseOpalSimilaritySwitchInfoText': 'Use Opal Similarity version:\nWhen enabled allows to use Opal Similarity version with arc face recognize model instead of Pearl one.',
+'UseOpalSimilaritySwitchState':    True,
+#
 # Face Landmarks Detection
 'LandmarksDetectionAdjSwitchInfoText': 'KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the face landmarks found by the detector. ',
 'LandmarksDetectionAdjSwitchState':    False,

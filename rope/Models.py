@@ -212,11 +212,11 @@ class Models():
         self.occluder_model = []
         self.faceparser_model = []
 
-    def run_recognize(self, img, kps):
+    def run_recognize(self, img, kps, useOpalSimilarity=True):
         if not self.recognition_model:
             self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
 
-        embedding, cropped_image = self.recognize(img, kps)
+        embedding, cropped_image = self.recognize(img, kps, useOpalSimilarity)
         return embedding, cropped_image
 
     def calc_swapper_latent(self, source_embedding):
@@ -1826,27 +1826,27 @@ class Models():
         #return landmark, landmark_score
         return landmark, []
 
-    def recognize(self, img, face_kps):
-        '''
-        # Find transform
-        dst = self.arcface_dst.copy()
-        dst[:, 0] += 8.0
+    def recognize(self, img, face_kps, useOpalSimilarity):
+        if not useOpalSimilarity:
+            # Find transform
+            dst = self.arcface_dst.copy()
+            dst[:, 0] += 8.0
 
-        tform = trans.SimilarityTransform()
-        tform.estimate(face_kps, dst)
+            tform = trans.SimilarityTransform()
+            tform.estimate(face_kps, dst)
 
-        # Transform
-        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
-        img = v2.functional.crop(img, 0,0, 128, 128)
-        img = v2.Resize((112, 112), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)(img)
-        '''
-        # Find transform 
-        tform = trans.SimilarityTransform()
-        tform.estimate(face_kps, self.arcface_dst)
+            # Transform
+            img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
+            img = v2.functional.crop(img, 0,0, 128, 128)
+            img = v2.Resize((112, 112), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)(img)
+        else:
+            # Find transform 
+            tform = trans.SimilarityTransform()
+            tform.estimate(face_kps, self.arcface_dst)
 
-        # Transform
-        img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
-        img = v2.functional.crop(img, 0,0, 112, 112)
+            # Transform
+            img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
+            img = v2.functional.crop(img, 0,0, 112, 112)
 
         # Switch to BGR and normalize
         img = img.permute(1,2,0) #112,112,3

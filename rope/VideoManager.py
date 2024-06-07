@@ -606,7 +606,7 @@ class VideoManager():
                     face_kps[4][1] += landmarks[4][1]
             #
 
-            face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps)
+            face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps, self.parameters["UseOpalSimilaritySwitch"])
             ret.append([face_kps, face_emb])
         
         if ret:
