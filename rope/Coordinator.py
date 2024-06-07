@@ -113,7 +113,11 @@ def coordinator():
         elif action[0][0] == "update_markers_canvas":
             gui.update_markers_canvas()
             action.pop(0)        
-          
+
+        # Face Landmarks
+        elif action[0][0] == "face_landmarks":
+            vm.face_landmarks = action[0][1]
+            action.pop(0)
             
         else:
             print("Action not found: "+action[0][0]+" "+str(action[0][1]))

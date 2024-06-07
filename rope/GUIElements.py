@@ -704,7 +704,7 @@ class Switch2():
         self.set(self.default_data[self.name+'State'])        
                 
 class Slider2():
-    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, slider_percent):
+    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, slider_percent, entry_width=60):
 
         # self.constants = CONSTANTS
         self.default_data = DEFAULT_DATA
@@ -780,7 +780,8 @@ class Slider2():
         self.slider.bind('<MouseWheel>', lambda e: self.update_handle(e, True))         
 
         # Add the Entry to the frame
-        self.entry_width = 60
+        #self.entry_width = 60
+        self.entry_width = entry_width
         self.entry_x = self.frame_width-self.entry_width 
         self.entry_y = 0
 

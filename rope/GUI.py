@@ -27,6 +27,90 @@ from torchvision.transforms import v2
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 from platform import system
 
+# Face Landmarks
+class FaceLandmarks:
+    def __init__(self, widget = {}, parameters = {}, add_action = {}):
+        self.data = {}
+        self.widget = widget
+        self.parameters = parameters
+        self.add_action = add_action
+
+    def add_landmarks(self, frame_number, face_id, landmarks):
+        if frame_number not in self.data:
+            self.data[frame_number] = {}
+        self.data[frame_number][face_id] = landmarks
+
+    def get_landmarks(self, frame_number, face_id):
+        return self.data.get(frame_number, {}).get(face_id, None)
+
+    def get_all_landmarks_for_frame(self, frame_number):
+        return self.data.get(frame_number, {})
+
+    def reset_landmarks_for_face_id(self, frame_number, face_id):
+        if frame_number in self.data:
+            landmarks = self.data.get(frame_number, {}).get(face_id, None)
+            if landmarks is not None:
+                landmarks = [(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)]
+    
+    def remove_all_landmarks_for_frame(self, frame_number):
+        if frame_number in self.data:
+            self.data[frame_number] = {}
+        
+    def remove_all_data(self):
+        self.data = {}
+
+    def apply_landmarks_to_widget_and_parameters(self, frame_number, face_id):
+        if self.widget and self.parameters and self.add_action:
+            landmarks = self.data.get(frame_number, {}).get(face_id, None)
+            if landmarks is not None:
+                self.widget['FaceIDSlider'].set(face_id, request_frame=False)
+                self.parameters['FaceIDSlider'] = face_id
+                self.widget['EyeLeftXSlider'].set(landmarks[0][0], request_frame=False)
+                self.parameters['EyeLeftXSlider'] = landmarks[0][0]
+                self.widget['EyeLeftYSlider'].set(landmarks[0][1], request_frame=False)
+                self.parameters['EyeLeftYSlider'] = landmarks[0][1]
+                self.widget['EyeRightXSlider'].set(landmarks[1][0], request_frame=False)
+                self.parameters['EyeRightXSlider'] = landmarks[1][0]
+                self.widget['EyeRightYSlider'].set(landmarks[1][1], request_frame=False)
+                self.parameters['EyeRightYSlider'] = landmarks[1][1]
+                self.widget['NoseXSlider'].set(landmarks[2][0], request_frame=False)
+                self.parameters['NoseXSlider'] = landmarks[2][0]
+                self.widget['NoseYSlider'].set(landmarks[2][1], request_frame=False)
+                self.parameters['NoseYSlider'] = landmarks[2][1]
+                self.widget['MouthLeftXSlider'].set(landmarks[3][0], request_frame=False)
+                self.parameters['MouthLeftXSlider'] = landmarks[3][0]
+                self.widget['MouthLeftYSlider'].set(landmarks[3][1], request_frame=False)
+                self.parameters['MouthLeftYSlider'] = landmarks[3][1]
+                self.widget['MouthRightXSlider'].set(landmarks[4][0], request_frame=False)
+                self.parameters['MouthRightXSlider'] = landmarks[4][0]
+                self.widget['MouthRightYSlider'].set(landmarks[4][1], request_frame=False)
+                self.parameters['MouthRightYSlider'] = landmarks[4][1]
+                self.add_action('parameters', self.parameters)
+            else:
+                self.widget['FaceIDSlider'].set(0, request_frame=False)
+                self.parameters['FaceIDSlider'] = 1
+                self.widget['EyeLeftXSlider'].set(0, request_frame=False)
+                self.parameters['EyeLeftXSlider'] = 0
+                self.widget['EyeLeftYSlider'].set(0, request_frame=False)
+                self.parameters['EyeLeftYSlider'] = 0
+                self.widget['EyeRightXSlider'].set(0, request_frame=False)
+                self.parameters['EyeRightXSlider'] = 0
+                self.widget['EyeRightYSlider'].set(0, request_frame=False)
+                self.parameters['EyeRightYSlider'] = 0
+                self.widget['NoseXSlider'].set(0, request_frame=False)
+                self.parameters['NoseXSlider'] = 0
+                self.widget['NoseYSlider'].set(0, request_frame=False)
+                self.parameters['NoseYSlider'] = 0
+                self.widget['MouthLeftXSlider'].set(0, request_frame=False)
+                self.parameters['MouthLeftXSlider'] = 0
+                self.widget['MouthLeftYSlider'].set(0, request_frame=False)
+                self.parameters['MouthLeftYSlider'] = 0
+                self.widget['MouthRightXSlider'].set(0, request_frame=False)
+                self.parameters['MouthRightXSlider'] = 0
+                self.widget['MouthRightYSlider'].set(0, request_frame=False)
+                self.parameters['MouthRightYSlider'] = 0
+                self.add_action('parameters', self.parameters)
+#
 
 class GUI(tk.Tk):
     def __init__(self, models):  
@@ -751,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1150)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1280)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -895,6 +979,7 @@ class GUI(tk.Tk):
         self.widget['DetectTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['DetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+
         # Landmarks Detection
         row += top_border_delta
         self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
@@ -911,7 +996,31 @@ class GUI(tk.Tk):
         row += top_border_delta
         self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
         row += bottom_border_delta
+
+        # Face Landmarks Position
+        self.widget['LandmarksPositionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksPositionAdjSwitch', 'Landmarks Position Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
+        row += switch_delta
+        self.widget['FaceIDSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceIDSlider', 'Face ID: ', 3, self.update_face_landmarks_data, 'parameter', 220, 20, 1, row, 0.62)
+        row += row_delta
+        self.widget['EyeLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftXSlider', 'Eye Left:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
+        self.widget['EyeLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row += row_delta    
+        self.widget['EyeRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightXSlider', 'Eye Right:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
+        self.widget['EyeRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row += row_delta
+        self.widget['NoseXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseXSlider', 'Nose:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
+        self.widget['NoseYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row += row_delta
+        self.widget['MouthLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftXSlider', 'Mouth Left:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
+        self.widget['MouthLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row += row_delta
+        self.widget['MouthRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightXSlider', 'Mouth Right: X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.59, 40)
+        self.widget['MouthRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row += top_border_delta
+        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
+        row += bottom_border_delta
         #
+
         self.widget['RecordTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RecordTypeTextSel', 'Record Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['VideoQualSlider'] = GE.Slider2(self.layer['parameters_frame'], 'VideoQualSlider', 'FFMPEG Quality', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
@@ -974,10 +1083,55 @@ class GUI(tk.Tk):
         self.donate_label.grid( row = 0, column = 2, sticky='NEWS')
         self.donate_label.bind("<Button-1>", lambda e: self.callback("https://www.paypal.com/donate/?hosted_button_id=Y5SB9LSXFGRF2"))
 
+        # Face Landmarks
+        self.face_landmarks = FaceLandmarks(self.widget, self.parameters, self.add_action)
+        self.add_action("face_landmarks", self.face_landmarks)
+        #
 
+    # Face Landmarks
+    def update_face_landmarks_data(self, mode, name, use_markers=False):
+        # print(inspect.currentframe().f_back.f_code.co_name,)
+        if mode=='parameter':
+            frame_number = self.video_slider.get()
+            face_id = self.widget['FaceIDSlider'].get()
+            parameter_value = self.widget[name].get()
 
+            landmarks = self.face_landmarks.get_landmarks(frame_number, face_id)
+            if landmarks is None:
+                landmarks = [(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)]
+                self.face_landmarks.add_landmarks(frame_number, face_id, landmarks)
 
+            match name:
+                case "EyeLeftXSlider":
+                    landmarks[0] = tuple((parameter_value, landmarks[0][1]))
+                case "EyeLeftYSlider":
+                    landmarks[0] = tuple((landmarks[0][0], parameter_value))
+                case "EyeRightXSlider":
+                    landmarks[1] = tuple((parameter_value, landmarks[1][1]))
+                case "EyeRightYSlider":
+                    landmarks[1] = tuple((landmarks[1][0], parameter_value))
+                case "NoseXSlider":
+                    landmarks[2] = tuple((parameter_value, landmarks[2][1]))
+                case "NoseYSlider":
+                    landmarks[2] = tuple((landmarks[2][0], parameter_value))
+                case "MouthLeftXSlider":
+                    landmarks[3] = tuple((parameter_value, landmarks[3][1]))
+                case "MouthLeftYSlider":
+                    landmarks[3] = tuple((landmarks[3][0], parameter_value))
+                case "MouthRightXSlider":
+                    landmarks[4] = tuple((parameter_value, landmarks[4][1]))
+                case "MouthRightYSlider":
+                    landmarks[4] = tuple((landmarks[4][0], parameter_value))
 
+            self.add_action("face_landmarks", self.face_landmarks)
+
+            self.face_landmarks.apply_landmarks_to_widget_and_parameters(frame_number, face_id)
+            
+            if use_markers:
+                self.add_action('get_requested_video_frame', frame_number)
+            else:
+                self.add_action('get_requested_video_frame_without_markers', frame_number)
+    #
 
     # Update the parameters or controls dicts and get a new frame
     def update_data(self, mode, name, use_markers=False):
@@ -1696,7 +1850,7 @@ class GUI(tk.Tk):
         self.image_loaded = False
         self.video_loaded = False
         self.clear_faces()
-
+        
         if media_type == 'Video':
             self.video_slider.set(0)
             self.add_action("load_target_video", media_file)
@@ -1734,7 +1888,6 @@ class GUI(tk.Tk):
         #endregion
 
         self.add_action("markers", self.markers)
-
 
 
     # @profile
