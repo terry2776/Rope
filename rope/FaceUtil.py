@@ -8,30 +8,37 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 from numpy.linalg import norm as l2norm
 
+# <--left profile
 src1 = np.array([[51.642, 50.115], [57.617, 49.990], [35.740, 69.007],
                  [51.157, 89.050], [57.025, 89.702]],
                 dtype=np.float32)
+
 # <--left
 src2 = np.array([[45.031, 50.118], [65.568, 50.872], [39.677, 68.111],
                  [45.177, 86.190], [64.246, 86.758]],
                 dtype=np.float32)
 
+# ---arcface frontal
+src3 = np.array([[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
+                 [41.5493, 92.3655], [70.7299, 92.2041]],
+                dtype=np.float32)
+
 # ---frontal
-src3 = np.array([[39.730, 51.138], [72.270, 51.138], [56.000, 68.493],
+src4 = np.array([[39.730, 51.138], [72.270, 51.138], [56.000, 68.493],
                  [42.463, 87.010], [69.537, 87.010]],
                 dtype=np.float32)
 
 # -->right
-src4 = np.array([[46.845, 50.872], [67.382, 50.118], [72.737, 68.111],
+src5 = np.array([[46.845, 50.872], [67.382, 50.118], [72.737, 68.111],
                  [48.167, 86.758], [67.236, 86.190]],
                 dtype=np.float32)
 
 # -->right profile
-src5 = np.array([[54.796, 49.990], [60.771, 50.115], [76.673, 69.007],
+src6 = np.array([[54.796, 49.990], [60.771, 50.115], [76.673, 69.007],
                  [55.388, 89.702], [61.257, 89.050]],
                 dtype=np.float32)
 
-src = np.array([src1, src2, src3, src4, src5])
+src = np.array([src1, src2, src3, src4, src5, src6])
 src_map = {112: src, 224: src * 2}
 
 arcface_src = np.array(
@@ -180,11 +187,11 @@ def warp_face_by_bounding_box(img, bboxes, image_size=112):
 
     return img, M
 
-def warp_face_by_face_landmark_5(img, kpss, image_size=112, normalized = False, interpolation=v2.InterpolationMode.BILINEAR, custom_arcface_src = None):
+def warp_face_by_face_landmark_5(img, kpss, image_size=112, normalized = False, use_src_map = False, interpolation=v2.InterpolationMode.NEAREST):
     # pad image by image size
     img = pad_image_by_size(img, image_size)
 
-    M, pose_index = estimate_norm(kpss, image_size, normalized, custom_arcface_src)
+    M, pose_index = estimate_norm(kpss, image_size, normalized, use_src_map)
     #warped = cv2.warpAffine(img, M, (image_size, image_size), borderValue=0.0)
     t = trans.SimilarityTransform()
     t.params[0:2] = M
@@ -194,7 +201,7 @@ def warp_face_by_face_landmark_5(img, kpss, image_size=112, normalized = False, 
     return img, M
 
 # lmk is prediction; src is template
-def estimate_norm(lmk, image_size=112, normalized = False, custom_arcface_src = None):
+def estimate_norm(lmk, image_size=112, normalized = False, use_src_map = False):
     assert lmk.shape == (5, 2)
     tform = trans.SimilarityTransform()
     lmk_tran = np.insert(lmk, 2, values=np.ones(5), axis=1)
@@ -202,7 +209,7 @@ def estimate_norm(lmk, image_size=112, normalized = False, custom_arcface_src = 
     min_index = []
     min_error = float('inf')
 
-    if custom_arcface_src is None:
+    if not use_src_map:
         if normalized == False:
             if image_size == 112:
                 src = arcface_src
@@ -213,19 +220,23 @@ def estimate_norm(lmk, image_size=112, normalized = False, custom_arcface_src = 
             src = arcface_src * factor
             src[:, 0] += (factor * 8.0)
     else:
-        src = custom_arcface_src
-
+        if image_size == 112:
+            src = src_map[112]
+        else:
+            src = float(image_size) / 112.0 * src_map[112]
+            
     for i in np.arange(src.shape[0]):
         tform.estimate(lmk, src[i])
         M = tform.params[0:2, :]
         results = np.dot(M, lmk_tran.T)
         results = results.T
         error = np.sum(np.sqrt(np.sum((results - src[i])**2, axis=1)))
-        #         print(error)
+        #print((error, min_error))
         if error < min_error:
             min_error = error
             min_M = M
             min_index = i
+    #print(src[min_index])
     return min_M, min_index
 
 def invertAffineTransform(M):

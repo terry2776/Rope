@@ -212,11 +212,11 @@ class Models():
         self.occluder_model = []
         self.faceparser_model = []
 
-    def run_recognize(self, img, kps, useOpalSimilarity=True):
+    def run_recognize(self, img, kps, similarity_type='Opal'):
         if not self.recognition_model:
             self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
 
-        embedding, cropped_image = self.recognize(img, kps, useOpalSimilarity)
+        embedding, cropped_image = self.recognize(img, kps, similarity_type=similarity_type)
         return embedding, cropped_image
 
     def calc_swapper_latent(self, source_embedding):
@@ -1467,7 +1467,7 @@ class Models():
             _scale = 512.0  / (max(w, h)*1.5)
             image, M = faceutil.transform(img, center, 512, _scale, rotate)
         else:
-            image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 512, normalized=True)
+            image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 512, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
 
         image = image.permute(1,2,0)
 
@@ -1536,7 +1536,7 @@ class Models():
         if from_points == False:
             crop_image, affine_matrix = faceutil.warp_face_by_bounding_box_for_landmark_68(img, bbox, (256, 256))
         else:
-            crop_image, affine_matrix = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=True)
+            crop_image, affine_matrix = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', crop_image.permute(1, 2, 0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1583,7 +1583,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1640,7 +1640,7 @@ class Models():
         if from_points == False:
             crop_image, detail = faceutil.warp_face_by_bounding_box_for_landmark_98(img, bbox, (256, 256))
         else:
-            crop_image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=256, normalized=True)
+            crop_image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=256, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
             #crop_image2 = crop_image.clone()
             h, w = (crop_image.size(dim=1), crop_image.size(dim=2))
         '''
@@ -1703,7 +1703,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1757,7 +1757,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 256, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=False)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=False, interpolation=v2.InterpolationMode.BILINEAR)
             #aimg2 = aimg.clone()
         '''
         cv2.imshow('image', aimg.permute(1,2,0).to('cpu').numpy())
@@ -1826,8 +1826,11 @@ class Models():
         #return landmark, landmark_score
         return landmark, []
 
-    def recognize(self, img, face_kps, useOpalSimilarity):
-        if not useOpalSimilarity:
+    def recognize(self, img, face_kps, similarity_type):
+        if similarity_type == 'Optimal':
+            # Find transform & Transform
+            img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, image_size=112, use_src_map = True, interpolation=v2.InterpolationMode.BILINEAR)
+        elif similarity_type == 'Pearl':
             # Find transform
             dst = self.arcface_dst.copy()
             dst[:, 0] += 8.0

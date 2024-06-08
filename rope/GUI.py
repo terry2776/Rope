@@ -980,9 +980,9 @@ class GUI(tk.Tk):
         row += row_delta
         self.widget['DetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
         
-        # Use Opal similarity
+        # Similarity
         row += row_delta
-        self.widget['UseOpalSimilaritySwitch'] = GE.Switch2(self.layer['parameters_frame'], 'UseOpalSimilaritySwitch', 'Use Opal Similarity', 3, self.update_data, 'parameter', 398, 20, 1, row)
+        self.widget['SimilarityTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SimilarityTypeTextSel', 'Similarity Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         #
         
         # Landmarks Detection
@@ -1144,7 +1144,18 @@ class GUI(tk.Tk):
         if mode=='parameter':
             self.parameters[name] = self.widget[name].get()
             self.add_action('parameters', self.parameters)
-
+            #Similarity Type
+            if name == 'SimilarityTypeTextSel':
+                if self.video_loaded or self.image_loaded:
+                    for face in self.target_faces:
+                        if face["ButtonState"]:
+                            # Clear all of the assignments
+                            face["SourceFaceAssignments"] = []
+                    # Clear all faces
+                    self.clear_faces()
+                    # reload input faces
+                    self.load_input_faces()
+            #
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
             self.add_action('control', self.control)
@@ -1541,7 +1552,7 @@ class GUI(tk.Tk):
                         except IndexError:
                             print('Image cropped too close:', file)
                         else:
-                            face_emb, cropped_image = self.models.run_recognize(img, kpss, self.parameters["UseOpalSimilaritySwitch"])
+                            face_emb, cropped_image = self.models.run_recognize(img, kpss, self.parameters["SimilarityTypeTextSel"])
                             crop = cv2.cvtColor(cropped_image.cpu().numpy(), cv2.COLOR_BGR2RGB)
                             crop = cv2.resize(crop, (85, 85))
 
@@ -1581,7 +1592,7 @@ class GUI(tk.Tk):
                 #     face_kps = kpss[i]
 
 
-                face_emb, cropped_img = self.models.run_recognize(img, face_kps, self.parameters["UseOpalSimilaritySwitch"])
+                face_emb, cropped_img = self.models.run_recognize(img, face_kps, self.parameters["SimilarityTypeTextSel"])
                 ret.append([face_kps, face_emb, cropped_img])
 
         except Exception:
