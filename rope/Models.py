@@ -47,6 +47,7 @@ class Models():
         self.GPEN_256_model = []
         self.GPEN_512_model = []
         self.GPEN_1024_model = []
+        self.GPEN_2048_model = []
         self.codeformer_model = []
 
         self.occluder_model = []
@@ -212,6 +213,7 @@ class Models():
         self.GPEN_256_model = []
         self.GPEN_512_model = []
         self.GPEN_1024_model = []
+        self.GPEN_2048_model = []
         self.codeformer_model = []
         self.occluder_model = []
         self.faceparser_model = []
@@ -385,6 +387,17 @@ class Models():
         self.syncvec.cpu()
         self.GFPGAN_model.run_with_iobinding(io_binding)
 
+    def run_GPEN_2048(self, image, output):
+        if not self.GPEN_2048_model:
+            self.GPEN_2048_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-2048.onnx", providers=self.providers)
+ 
+        io_binding = self.GPEN_2048_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.GPEN_2048_model.run_with_iobinding(io_binding)
+
     def run_GPEN_1024(self, image, output):
         if not self.GPEN_1024_model:
             self.GPEN_1024_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-1024.onnx", providers=self.providers)
@@ -395,6 +408,7 @@ class Models():
 
         self.syncvec.cpu()
         self.GPEN_1024_model.run_with_iobinding(io_binding)
+
 
     def run_GPEN_512(self, image, output):
         if not self.GPEN_512_model:

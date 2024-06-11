@@ -1199,6 +1199,7 @@ class VideoManager():
         t512 = v2.Resize((512, 512), antialias=False)
         t256 = v2.Resize((256, 256), antialias=False)
         t1024 = v2.Resize((1024, 1024), antialias=False)
+        t2048 = v2.Resize((2048, 2048), antialias=False)
 
         # If using a separate detection mode
         if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
@@ -1222,7 +1223,7 @@ class VideoManager():
         
         temp = torch.div(temp, 255)
         temp = v2.functional.normalize(temp, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=False)
-        if parameters['RestorerTypeTextSel'] == 'GPEN256':
+        if parameters['RestorerTypeTextSel'] == 'GP256':
             temp = t256(temp)
         temp = torch.unsqueeze(temp, 0).contiguous()
 
@@ -1235,17 +1236,22 @@ class VideoManager():
         elif parameters['RestorerTypeTextSel'] == 'CF':
             self.models.run_codeformer(temp, outpred) 
             
-        elif parameters['RestorerTypeTextSel'] == 'GPEN256':
+        elif parameters['RestorerTypeTextSel'] == 'GP256':
             outpred = torch.empty((1,3,256,256), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_256(temp, outpred) 
             
-        elif parameters['RestorerTypeTextSel'] == 'GPEN512':
+        elif parameters['RestorerTypeTextSel'] == 'GP512':
             self.models.run_GPEN_512(temp, outpred) 
 
-        elif parameters['RestorerTypeTextSel'] == 'GPEN1024':
+        elif parameters['RestorerTypeTextSel'] == 'GP1024':
             temp = t1024(temp)
             outpred = torch.empty((1, 3, 1024, 1024), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_1024(temp, outpred)
+
+        elif parameters['RestorerTypeTextSel'] == 'GP2048':
+            temp = t2048(temp)
+            outpred = torch.empty((1, 3, 2048, 2048), dtype=torch.float32, device=device).contiguous()
+            self.models.run_GPEN_2048(temp, outpred)
 
         # Format back to cxHxW @ 255
         outpred = torch.squeeze(outpred)      
@@ -1253,9 +1259,7 @@ class VideoManager():
         outpred = torch.add(outpred, 1)
         outpred = torch.div(outpred, 2)
         outpred = torch.mul(outpred, 255)
-        if parameters['RestorerTypeTextSel'] == 'GPEN256':
-            outpred = t512(outpred)
-        elif parameters['RestorerTypeTextSel'] == 'GPEN1024':
+        if parameters['RestorerTypeTextSel'] == 'GP256' or parameters['RestorerTypeTextSel'] == 'GP1024' or parameters['RestorerTypeTextSel'] == 'GP2048':
             outpred = t512(outpred)
         # Invert Transform
         if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
