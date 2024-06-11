@@ -537,8 +537,10 @@ class VideoManager():
             for i in range(len(self.markers)):
                 temp.append(self.markers[i]['frame'])
             idx = bisect.bisect(temp, frame_number)
-            
-            parameters = self.markers[idx-1]['parameters'].copy()
+
+            # We copy marker parameters only if condition matches.
+            if idx > 0:
+                parameters = self.markers[idx-1]['parameters'].copy()
         
         # Load frame into VRAM
         img = torch.from_numpy(target_image.astype('uint8')).to('cuda') #HxWxc
