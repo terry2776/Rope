@@ -417,6 +417,11 @@ DEFAULT_DATA = {
 'SimilarityTypeTextSelMode':        'Opal',
 'SimilarityTypeTextSelModes':       ['Opal', 'Pearl', 'Optimal'],
 #
+# Face Swapper Model
+'FaceSwapperModelTextSelInfoText':  'Face Swapper Model:\nSelect the Face Swapper model.',
+'FaceSwapperModelTextSelMode':      'Inswapper 128',
+'FaceSwapperModelTextSelModes':     ['Inswapper 128', 'SimSwap 512'],
+#
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',
 'PreviewModeTextSelModes':          ['Video', 'Image','Theater'],

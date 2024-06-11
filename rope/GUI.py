@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1300)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1330)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -856,6 +856,12 @@ class GUI(tk.Tk):
         row = 1
         column = 160
 
+        # Face Swapper Model
+        self.widget['FaceSwapperModelTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'FaceSwapperModelTextSel', 'Face Swapper Model', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += top_border_delta
+        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
+        row += bottom_border_delta
+        #
         # Restore
         self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, 1, row)
         row += switch_delta
@@ -1145,7 +1151,7 @@ class GUI(tk.Tk):
             self.parameters[name] = self.widget[name].get()
             self.add_action('parameters', self.parameters)
             #Similarity Type
-            if name == 'SimilarityTypeTextSel':
+            if name == 'SimilarityTypeTextSel' or name == 'FaceSwapperModelTextSel':
                 if self.video_loaded or self.image_loaded:
                     for face in self.target_faces:
                         if face["ButtonState"]:
@@ -1552,7 +1558,7 @@ class GUI(tk.Tk):
                         except IndexError:
                             print('Image cropped too close:', file)
                         else:
-                            face_emb, cropped_image = self.models.run_recognize(img, kpss, self.parameters["SimilarityTypeTextSel"])
+                            face_emb, cropped_image = self.models.run_recognize(img, kpss, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
                             crop = cv2.cvtColor(cropped_image.cpu().numpy(), cv2.COLOR_BGR2RGB)
                             crop = cv2.resize(crop, (85, 85))
 
@@ -1592,7 +1598,7 @@ class GUI(tk.Tk):
                 #     face_kps = kpss[i]
 
 
-                face_emb, cropped_img = self.models.run_recognize(img, face_kps, self.parameters["SimilarityTypeTextSel"])
+                face_emb, cropped_img = self.models.run_recognize(img, face_kps, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
                 ret.append([face_kps, face_emb, cropped_img])
 
         except Exception:

@@ -606,7 +606,7 @@ class VideoManager():
                     face_kps[4][1] += landmarks[4][1]
             #
 
-            face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps, self.parameters["SimilarityTypeTextSel"])
+            face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
             ret.append([face_kps, face_emb])
         
         if ret:
@@ -727,16 +727,21 @@ class VideoManager():
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
 
-        latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
+        if parameters['FaceSwapperModelTextSel'] == 'Inswapper 128':
+            latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
 
-        dim = 1
-        if parameters['SwapperTypeTextSel'] == '128':
             dim = 1
-            input_face_affined = original_face_128
-        elif parameters['SwapperTypeTextSel'] == '256':
-            dim = 2
-            input_face_affined = original_face_256
-        elif parameters['SwapperTypeTextSel'] == '512':
+            if parameters['SwapperTypeTextSel'] == '128':
+                dim = 1
+                input_face_affined = original_face_128
+            elif parameters['SwapperTypeTextSel'] == '256':
+                dim = 2
+                input_face_affined = original_face_256
+            elif parameters['SwapperTypeTextSel'] == '512':
+                dim = 4
+                input_face_affined = original_face_512
+        else:
+            latent = torch.from_numpy(self.models.calc_swapper_latent_simswap512(s_e)).float().to('cuda')
             dim = 4
             input_face_affined = original_face_512
 
@@ -753,26 +758,42 @@ class VideoManager():
         input_face_affined = input_face_affined.permute(1, 2, 0)
         input_face_affined = torch.div(input_face_affined, 255.0)
 
-        for k in range(itex):
-            for j in range(dim):
-                for i in range(dim):
-                    input_face_disc = input_face_affined[j::dim,i::dim]
-                    input_face_disc = input_face_disc.permute(2, 0, 1)
-                    input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
+        if parameters['FaceSwapperModelTextSel'] == 'Inswapper 128':
+            for k in range(itex):
+                for j in range(dim):
+                    for i in range(dim):
+                        input_face_disc = input_face_affined[j::dim,i::dim]
+                        input_face_disc = input_face_disc.permute(2, 0, 1)
+                        input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
 
-                    swapper_output = torch.empty((1,3,128,128), dtype=torch.float32, device='cuda').contiguous()
-                    self.models.run_swapper(input_face_disc, latent, swapper_output)
+                        swapper_output = torch.empty((1,3,128,128), dtype=torch.float32, device='cuda').contiguous()
+                        self.models.run_swapper(input_face_disc, latent, swapper_output)
 
-                    swapper_output = torch.squeeze(swapper_output)
-                    swapper_output = swapper_output.permute(1, 2, 0)
+                        swapper_output = torch.squeeze(swapper_output)
+                        swapper_output = swapper_output.permute(1, 2, 0)
 
 
-                    output[j::dim, i::dim] = swapper_output.clone()
-            prev_face = input_face_affined.clone()
-            input_face_affined = output.clone()
-            output = torch.mul(output, 255)
-            output = torch.clamp(output, 0, 255)
+                        output[j::dim, i::dim] = swapper_output.clone()
+                prev_face = input_face_affined.clone()
+                input_face_affined = output.clone()
+                output = torch.mul(output, 255)
+                output = torch.clamp(output, 0, 255)
+        else:
+            for k in range(itex):
+                input_face_disc = input_face_affined.permute(2, 0, 1)
+                input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
+                swapper_output = torch.empty((1,3,512,512), dtype=torch.float32, device='cuda').contiguous()
+                self.models.run_simswap512(input_face_disc, latent, swapper_output)
+                swapper_output = torch.squeeze(swapper_output)
+                swapper_output = swapper_output.permute(1, 2, 0)
+                prev_face = input_face_affined.clone()
+                input_face_affined = swapper_output.clone()
 
+                output = swapper_output.clone()
+                output = torch.mul(output, 255)
+                output = torch.clamp(output, 0, 255)
+                #output = output.transpose(0, 1).transpose(0, 2).contiguous()
+                #output = output.float().div(255)
 
         output = output.permute(2, 0, 1)
 

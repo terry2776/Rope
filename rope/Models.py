@@ -36,9 +36,11 @@ class Models():
         self.insight106_model = []
 
         self.recognition_model = []
+        self.recognition_simswap_model = []
         self.swapper_model = []
         self.swapper_model_kps = []
         self.swapper_model_swap = []
+        self.simswap512_model = []
 
         self.emap = []
         self.GFPGAN_model = []
@@ -203,7 +205,9 @@ class Models():
         self.resnet50_model = []
         self.insight106_model = []
         self.recognition_model = []
+        self.recognition_simswap_model = []
         self.swapper_model = []
+        self.simswap512_model = []
         self.GFPGAN_model = []
         self.GPEN_256_model = []
         self.GPEN_512_model = []
@@ -212,11 +216,18 @@ class Models():
         self.occluder_model = []
         self.faceparser_model = []
 
-    def run_recognize(self, img, kps, similarity_type='Opal'):
-        if not self.recognition_model:
-            self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
+    def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper 128'):
+        if face_swapper_model == 'Inswapper 128':
+            if not self.recognition_model:
+                self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
 
-        embedding, cropped_image = self.recognize(img, kps, similarity_type=similarity_type)
+            embedding, cropped_image = self.recognize(self.recognition_model, img, kps, similarity_type=similarity_type)
+        else:
+            if not self.recognition_simswap_model:
+                self.recognition_simswap_model = onnxruntime.InferenceSession('./models/simswap_arcface_model.onnx', providers=self.providers)
+
+            embedding, cropped_image = self.recognize(self.recognition_simswap_model, img, kps, similarity_type=similarity_type)
+
         return embedding, cropped_image
 
     def calc_swapper_latent(self, source_embedding):
@@ -247,6 +258,36 @@ class Models():
 
         self.syncvec.cpu()
         self.swapper_model.run_with_iobinding(io_binding)
+
+    def calc_swapper_latent_simswap512(self, source_embedding):
+        n_e = source_embedding / l2norm(source_embedding)
+        latent = n_e.reshape((1,-1))
+
+        return latent
+
+    def run_simswap512(self, image, embedding, output):
+        if not self.simswap512_model:
+            self.simswap512_model = onnxruntime.InferenceSession( "./models/simswap_512_unoff.onnx", providers=self.providers)
+
+        '''
+        mean = torch.tensor([0.485, 0.456, 0.406]).to('cuda').view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225]).to('cuda').view(1, 3, 1, 1)
+
+        image = image.sub_(mean).div_(std)
+
+        imagenet_std = torch.Tensor([0.229, 0.224, 0.225]).to('cuda').view(3, 1, 1)
+        imagenet_mean = torch.Tensor([0.485, 0.456, 0.406]).to('cuda').view(3, 1, 1)
+        '''
+        
+        io_binding = self.simswap512_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='onnx::Gemm_1', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        
+        self.syncvec.cpu()
+        self.simswap512_model.run_with_iobinding(io_binding)
+
+        #output = (output * imagenet_std + imagenet_mean)
 
     def run_swap_stg1(self, embedding):
 
@@ -1826,7 +1867,7 @@ class Models():
         #return landmark, landmark_score
         return landmark, []
 
-    def recognize(self, img, face_kps, similarity_type):
+    def recognize(self, recognition_model, img, face_kps, similarity_type):
         if similarity_type == 'Optimal':
             # Find transform & Transform
             img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, image_size=112, use_src_map = True, interpolation=v2.InterpolationMode.BILINEAR)
@@ -1861,14 +1902,14 @@ class Models():
 
         # Prepare data and find model parameters
         img = torch.unsqueeze(img, 0).contiguous()
-        input_name = self.recognition_model.get_inputs()[0].name
+        input_name = recognition_model.get_inputs()[0].name
 
-        outputs = self.recognition_model.get_outputs()
+        outputs = recognition_model.get_outputs()
         output_names = []
         for o in outputs:
             output_names.append(o.name)
 
-        io_binding = self.recognition_model.io_binding()
+        io_binding = recognition_model.io_binding()
         io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=img.size(), buffer_ptr=img.data_ptr())
 
         for i in range(len(output_names)):
@@ -1876,7 +1917,7 @@ class Models():
 
         # Sync and run model
         self.syncvec.cpu()
-        self.recognition_model.run_with_iobinding(io_binding)
+        recognition_model.run_with_iobinding(io_binding)
 
         # Return embedding
         return np.array(io_binding.copy_outputs_to_cpu()).flatten(), cropped_image
