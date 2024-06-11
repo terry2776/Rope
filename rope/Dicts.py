@@ -419,8 +419,8 @@ DEFAULT_DATA = {
 #
 # Face Swapper Model
 'FaceSwapperModelTextSelInfoText':  'Face Swapper Model:\nSelect the Face Swapper model.',
-'FaceSwapperModelTextSelMode':      'Inswapper 128',
-'FaceSwapperModelTextSelModes':     ['Inswapper 128', 'SimSwap 512'],
+'FaceSwapperModelTextSelMode':      'Inswapper128',
+'FaceSwapperModelTextSelModes':     ['Inswapper128', 'SimSwap512'],
 #
 'PreviewModeTextSelInfoText':       '',
 'PreviewModeTextSelMode':           'Video',

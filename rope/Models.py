@@ -216,8 +216,8 @@ class Models():
         self.occluder_model = []
         self.faceparser_model = []
 
-    def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper 128'):
-        if face_swapper_model == 'Inswapper 128':
+    def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper128'):
+        if face_swapper_model == 'Inswapper128':
             if not self.recognition_model:
                 self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
 

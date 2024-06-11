@@ -727,7 +727,7 @@ class VideoManager():
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
 
-        if parameters['FaceSwapperModelTextSel'] == 'Inswapper 128':
+        if parameters['FaceSwapperModelTextSel'] == 'Inswapper128':
             latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
 
             dim = 1
@@ -758,7 +758,7 @@ class VideoManager():
         input_face_affined = input_face_affined.permute(1, 2, 0)
         input_face_affined = torch.div(input_face_affined, 255.0)
 
-        if parameters['FaceSwapperModelTextSel'] == 'Inswapper 128':
+        if parameters['FaceSwapperModelTextSel'] == 'Inswapper128':
             for k in range(itex):
                 for j in range(dim):
                     for i in range(dim):
