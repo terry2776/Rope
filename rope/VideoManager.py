@@ -621,7 +621,7 @@ class VideoManager():
                     if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]:
                         s_e = found_face["AssignedEmbedding"]
                         # s_e = found_face['ptrdata']
-                        img = self.func_w_test("swap_video", self.swap_core, img, fface[0], s_e, parameters, control)
+                        img = self.func_w_test("swap_video", self.swap_core, img, fface[0], s_e, fface[1], parameters, control)
                         # img = img.permute(2,0,1)
                     
             img = img.permute(1,2,0)
@@ -699,7 +699,7 @@ class VideoManager():
         return result
 
     # @profile    
-    def swap_core(self, img, kps, s_e, parameters, control): # img = RGB
+    def swap_core(self, img, kps, s_e, t_e, parameters, control): # img = RGB
         # 512 transforms
         dst = self.arcface_dst * 4.0
         dst[:,0] += 32.0
@@ -729,9 +729,14 @@ class VideoManager():
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
 
+        #latent = src_latent - (factor * dst_latent)
         if parameters['FaceSwapperModelTextSel'] == 'Inswapper128':
             latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
-
+            if parameters['FaceLikenessSwitch']:
+                factor = parameters['FaceLikenessFactorSlider']
+                dst_latent = torch.from_numpy(self.models.calc_swapper_latent(t_e)).float().to('cuda')            
+                latent = latent - (factor * dst_latent)
+            
             dim = 1
             if parameters['SwapperTypeTextSel'] == '128':
                 dim = 1
@@ -744,6 +749,11 @@ class VideoManager():
                 input_face_affined = original_face_512
         else:
             latent = torch.from_numpy(self.models.calc_swapper_latent_simswap512(s_e)).float().to('cuda')
+            if parameters['FaceLikenessSwitch']:
+                factor = parameters['FaceLikenessFactorSlider']
+                dst_latent = torch.from_numpy(self.models.calc_swapper_latent_simswap512(t_e)).float().to('cuda')
+                latent = latent - (factor * dst_latent)
+
             dim = 4
             input_face_affined = original_face_512
 

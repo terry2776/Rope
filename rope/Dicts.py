@@ -194,6 +194,10 @@ DEFAULT_DATA = {
 'LandmarksPositionAdjSwitchInfoText': 'KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the position of face landmarks found by the detector. ',
 'LandmarksPositionAdjSwitchState':    False,
 #
+# Face Likeness
+'FaceLikenessSwitchInfoText':       'Face Likeness:\nThis is an experimental feature to perform direct adjustments to likeness of faces.',
+'FaceLikenessSwitchState':           False,
+#
 'FaceParserSwitchInfoText':         'BACKGROUND MASK:\nAllow the unprocessed background from the orginal image to show in the final swap.',
 'FaceParserSwitchState':            False,
 'MouthParserSwitchInfoText':        'MOUTH MASK:\nAllow the mouth from the original face to show on the swapped face.',
@@ -261,6 +265,13 @@ DEFAULT_DATA = {
 'LandmarksDetectScoreSliderInfoText':'LANDMARKS DETECTION SCORE LIMIT:\nDetermines the minimum score required for a face to be detected. Higher values require higher quality faces. E.g., if faces are flickering when at extreme angles, raising this will limit swapping attempts.',
 'LandmarksDetectScoreSliderMax':     100,
 'LandmarksDetectScoreSliderMin':     1,
+#
+# Face Likeness
+'FaceLikenessFactorSliderAmount':    0.00,
+'FaceLikenessFactorSliderInc':       0.05,      
+'FaceLikenessFactorSliderInfoText':  'Face Likeness Factor:\nDetermines the factor of likeness between the source and assigned faces.',
+'FaceLikenessFactorSliderMax':       1.00,
+'FaceLikenessFactorSliderMin':       -1.00,
 #
 # Face Landmarks Position
 'FaceIDSliderAmount':               1,

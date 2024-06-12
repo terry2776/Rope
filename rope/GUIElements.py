@@ -743,6 +743,10 @@ class Slider2():
         self.min_ = self.default_data[name+'Min']
         self.max_ = self.default_data[name+'Max'] 
         self.inc_ = self.default_data[name+'Inc']   
+        self.decimal_places_ = 0
+        if str(self.inc_).find('.') != -1:
+            self.decimal_places_ = len(str(self.inc_)[str(self.inc_).find('.') + 1:])
+
         self.display_text = display_text+' '         
 
         # Set up spacing
@@ -845,7 +849,7 @@ class Slider2():
             self.amount = position
             
             if also_update_entry:
-                self.entry_string.set(str(position))
+                self.entry_string.set(str(format(position, '.' + str(self.decimal_places_) + 'f')))
             
             if request_frame:
                 self.function(self.data_type, self.name, use_markers=False)
