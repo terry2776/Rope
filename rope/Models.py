@@ -224,7 +224,7 @@ class Models():
                 self.recognition_model = onnxruntime.InferenceSession('./models/w600k_r50.onnx', providers=self.providers)
 
             embedding, cropped_image = self.recognize(self.recognition_model, img, kps, similarity_type=similarity_type)
-        else:
+        elif face_swapper_model == 'SimSwap512':
             if not self.recognition_simswap_model:
                 self.recognition_simswap_model = onnxruntime.InferenceSession('./models/simswap_arcface_model.onnx', providers=self.providers)
 
@@ -267,19 +267,9 @@ class Models():
 
         return latent
 
-    def run_simswap512(self, image, embedding, output):
+    def run_swapper_simswap512(self, image, embedding, output):
         if not self.simswap512_model:
             self.simswap512_model = onnxruntime.InferenceSession( "./models/simswap_512_unoff.onnx", providers=self.providers)
-
-        '''
-        mean = torch.tensor([0.485, 0.456, 0.406]).to('cuda').view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).to('cuda').view(1, 3, 1, 1)
-
-        image = image.sub_(mean).div_(std)
-
-        imagenet_std = torch.Tensor([0.229, 0.224, 0.225]).to('cuda').view(3, 1, 1)
-        imagenet_mean = torch.Tensor([0.485, 0.456, 0.406]).to('cuda').view(3, 1, 1)
-        '''
         
         io_binding = self.simswap512_model.io_binding()
         io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
@@ -288,8 +278,6 @@ class Models():
         
         self.syncvec.cpu()
         self.simswap512_model.run_with_iobinding(io_binding)
-
-        #output = (output * imagenet_std + imagenet_mean)
 
     def run_swap_stg1(self, embedding):
 
