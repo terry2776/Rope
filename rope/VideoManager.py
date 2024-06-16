@@ -18,7 +18,7 @@ torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 torch.set_grad_enabled(False)
 onnxruntime.set_default_logger_severity(4)
-#from torchvision.utils import draw_bounding_boxes
+import rope.FaceUtil as faceutil
 
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 
@@ -700,23 +700,44 @@ class VideoManager():
 
     # @profile    
     def swap_core(self, img, kps, s_e, t_e, parameters, control): # img = RGB
-        # 512 transforms
-        dst = self.arcface_dst * 4.0
-        dst[:,0] += 32.0
-        
-        # Change the ref points
-        if parameters['FaceAdjSwitch']:
-            dst[:,0] += parameters['KPSXSlider']
-            dst[:,1] += parameters['KPSYSlider']
-            dst[:,0] -= 255
-            dst[:,0] *= (1+parameters['KPSScaleSlider']/100)
-            dst[:,0] += 255
-            dst[:,1] -= 255
-            dst[:,1] *= (1+parameters['KPSScaleSlider']/100)
-            dst[:,1] += 255
+        swapper_model = parameters['FaceSwapperModelTextSel']
 
-        tform = trans.SimilarityTransform()
-        tform.estimate(kps, dst) 
+        if swapper_model != 'GF1' and swapper_model != 'GF2' and swapper_model != 'GF3':
+            # 512 transforms
+            dst = self.arcface_dst * 4.0
+            dst[:,0] += 32.0
+            
+            # Change the ref points
+            if parameters['FaceAdjSwitch']:
+                dst[:,0] += parameters['KPSXSlider']
+                dst[:,1] += parameters['KPSYSlider']
+                dst[:,0] -= 255
+                dst[:,0] *= (1+parameters['KPSScaleSlider']/100)
+                dst[:,0] += 255
+                dst[:,1] -= 255
+                dst[:,1] *= (1+parameters['KPSScaleSlider']/100)
+                dst[:,1] += 255
+
+            tform = trans.SimilarityTransform()
+            tform.estimate(kps, dst)
+        else:
+            dst = faceutil.get_arcface_template(image_size=512, mode='arcfacemap')
+
+            # Change the ref points
+            if parameters['FaceAdjSwitch']:
+                for k in dst:
+                    k[:,0] += parameters['KPSXSlider']
+                    k[:,1] += parameters['KPSYSlider']
+                    k[:,0] -= 255
+                    k[:,0] *= (1+parameters['KPSScaleSlider']/100)
+                    k[:,0] += 255
+                    k[:,1] -= 255
+                    k[:,1] *= (1+parameters['KPSScaleSlider']/100)
+                    k[:,1] += 255
+
+            M, _ = faceutil.estimate_norm_arcface_template(kps, src=dst)
+            tform = trans.SimilarityTransform()
+            tform.params[0:2] = M
 
         # Scaling Transforms
         t512 = v2.Resize((512, 512), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)
@@ -728,9 +749,9 @@ class VideoManager():
         original_face_512 = v2.functional.crop(original_face_512, 0,0, 512, 512)# 3, 512, 512
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
+        #cv2.imwrite('test.png', cv2.cvtColor(original_face_512.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
-        #latent = src_latent - (factor * dst_latent)
-        if parameters['FaceSwapperModelTextSel'] == 'Inswapper128':
+        if swapper_model == 'Inswapper128':
             latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
             if parameters['FaceLikenessSwitch']:
                 factor = parameters['FaceLikenessFactorSlider']
@@ -747,7 +768,7 @@ class VideoManager():
             elif parameters['SwapperTypeTextSel'] == '512':
                 dim = 4
                 input_face_affined = original_face_512
-        elif parameters['FaceSwapperModelTextSel'] == 'SimSwap512':
+        elif swapper_model == 'SimSwap512':
             latent = torch.from_numpy(self.models.calc_swapper_latent_simswap512(s_e)).float().to('cuda')
             if parameters['FaceLikenessSwitch']:
                 factor = parameters['FaceLikenessFactorSlider']
@@ -756,6 +777,15 @@ class VideoManager():
 
             dim = 4
             input_face_affined = original_face_512
+        elif swapper_model == 'GF1' or swapper_model == 'GF2' or swapper_model == 'GF3':
+            latent = torch.from_numpy(self.models.calc_swapper_latent_ghost(s_e)).float().to('cuda')
+            if parameters['FaceLikenessSwitch']:
+                factor = parameters['FaceLikenessFactorSlider']
+                dst_latent = torch.from_numpy(self.models.calc_swapper_latent_ghost(t_e)).float().to('cuda')
+                latent = latent - (factor * dst_latent)
+
+            dim = 2
+            input_face_affined = original_face_256
 
         # Optional Scaling # change the thransform matrix
         if parameters['FaceAdjSwitch']:
@@ -770,7 +800,7 @@ class VideoManager():
         input_face_affined = input_face_affined.permute(1, 2, 0)
         input_face_affined = torch.div(input_face_affined, 255.0)
 
-        if parameters['FaceSwapperModelTextSel'] == 'Inswapper128':
+        if swapper_model == 'Inswapper128':
             for k in range(itex):
                 for j in range(dim):
                     for i in range(dim):
@@ -790,7 +820,8 @@ class VideoManager():
                 input_face_affined = output.clone()
                 output = torch.mul(output, 255)
                 output = torch.clamp(output, 0, 255)
-        elif parameters['FaceSwapperModelTextSel'] == 'SimSwap512':
+
+        elif swapper_model == 'SimSwap512':
             for k in range(itex):
                 input_face_disc = input_face_affined.permute(2, 0, 1)
                 input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
@@ -805,10 +836,32 @@ class VideoManager():
                 output = torch.mul(output, 255)
                 output = torch.clamp(output, 0, 255)
 
+        elif swapper_model == 'GF1' or swapper_model == 'GF2' or swapper_model == 'GF3':
+            for k in range(itex):
+                input_face_disc = torch.mul(input_face_affined, 255.0).permute(2, 0, 1)
+                input_face_disc = torch.div(input_face_disc.float(), 127.5)
+                input_face_disc = torch.sub(input_face_disc, 1)
+                #input_face_disc = input_face_disc[[2, 1, 0], :, :] # Inverte i canali da BGR a RGB (assumendo che l'input sia BGR)
+                input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
+                swapper_output = torch.empty((1,3,256,256), dtype=torch.float32, device='cuda').contiguous()
+                self.models.run_swapper_ghostface(input_face_disc, latent, swapper_output, swapper_model)
+                swapper_output = swapper_output[0]
+                swapper_output = swapper_output.permute(1, 2, 0)
+                swapper_output = torch.mul(swapper_output, 127.5)
+                swapper_output = torch.add(swapper_output, 127.5)
+                #swapper_output = swapper_output[:, :, [2, 1, 0]] # Inverte i canali da RGB a BGR (assumendo che l'input sia RGB)
+                prev_face = input_face_affined.clone()
+                input_face_affined = swapper_output.clone()
+                input_face_affined = torch.div(input_face_affined, 255)
+
+                output = swapper_output.clone()
+                output = torch.clamp(output, 0, 255)
+                #cv2.imwrite('test_swap.png', cv2.cvtColor(output.cpu().numpy(), cv2.COLOR_RGB2BGR))
+
         output = output.permute(2, 0, 1)
 
-
         swap = t512(output)
+        #cv2.imwrite('test_swap512.png', cv2.cvtColor(swap.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         if parameters['StrengthSwitch']:
             if itex == 0:
@@ -822,6 +875,7 @@ class VideoManager():
                 prev_face = torch.mul(prev_face, 255)
                 prev_face = torch.clamp(prev_face, 0, 255)
                 prev_face = prev_face.permute(2, 0, 1)
+
                 prev_face = t512(prev_face)
                 swap = torch.mul(swap, alpha)
                 prev_face = torch.mul(prev_face, 1-alpha)
@@ -909,8 +963,8 @@ class VideoManager():
 
         # Add blur to swap_mask results
         gauss = transforms.GaussianBlur(parameters['BlendSlider']*2+1, (parameters['BlendSlider']+1)*0.2)
-        swap_mask = gauss(swap_mask)  
-        
+        swap_mask = gauss(swap_mask)
+        #cv2.imwrite('test_swap512_2.png', cv2.cvtColor(swap.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         # Combine border and swap mask, scale, and apply to swap
         swap_mask = torch.mul(swap_mask, border_mask)
@@ -943,7 +997,8 @@ class VideoManager():
             swap = v2.functional.affine(swap, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0,interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
             swap = swap[0:3, top:bottom, left:right]
             swap = swap.permute(1, 2, 0)
-            
+            #cv2.imwrite('test_swap512_3.png', cv2.cvtColor(swap.cpu().numpy(), cv2.COLOR_RGB2BGR))
+
             # Untransform the swap mask
             swap_mask = v2.functional.pad(swap_mask, (0,0,img.shape[2]-512, img.shape[1]-512))
             swap_mask = v2.functional.affine(swap_mask, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
@@ -960,7 +1015,8 @@ class VideoManager():
             swap = torch.add(swap, img_crop)
             swap = swap.type(torch.uint8)
             swap = swap.permute(2,0,1)
-            img[0:3, top:bottom, left:right] = swap  
+            img[0:3, top:bottom, left:right] = swap
+            #cv2.imwrite('test_swap512_4.png', cv2.cvtColor(img.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         else:
             # Invert swap mask

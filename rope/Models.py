@@ -37,10 +37,14 @@ class Models():
 
         self.recognition_model = []
         self.recognition_simswap_model = []
+        self.recognition_ghost_model = []
         self.swapper_model = []
         self.swapper_model_kps = []
         self.swapper_model_swap = []
         self.simswap512_model = []
+        self.ghostfacev1swap_model = []
+        self.ghostfacev2swap_model = []
+        self.ghostfacev3swap_model = []
 
         self.emap = []
         self.GFPGAN_model = []
@@ -207,8 +211,12 @@ class Models():
         self.insight106_model = []
         self.recognition_model = []
         self.recognition_simswap_model = []
+        self.recognition_ghost_model = []
         self.swapper_model = []
         self.simswap512_model = []
+        self.ghostfacev1swap_model = []
+        self.ghostfacev2swap_model = []
+        self.ghostfacev3swap_model = []
         self.GFPGAN_model = []
         self.GPEN_256_model = []
         self.GPEN_512_model = []
@@ -229,6 +237,12 @@ class Models():
                 self.recognition_simswap_model = onnxruntime.InferenceSession('./models/simswap_arcface_model.onnx', providers=self.providers)
 
             embedding, cropped_image = self.recognize(self.recognition_simswap_model, img, kps, similarity_type=similarity_type)
+
+        elif face_swapper_model == 'GF1' or face_swapper_model == 'GF2' or face_swapper_model == 'GF3':
+            if not self.recognition_ghost_model:
+                self.recognition_ghost_model = onnxruntime.InferenceSession('./models/ghost_arcface_backbone.onnx', providers=self.providers)
+
+            embedding, cropped_image = self.recognize(self.recognition_ghost_model, img, kps, similarity_type=similarity_type)
 
         return embedding, cropped_image
 
@@ -262,8 +276,8 @@ class Models():
         self.swapper_model.run_with_iobinding(io_binding)
 
     def calc_swapper_latent_simswap512(self, source_embedding):
-        n_e = source_embedding / l2norm(source_embedding)
-        latent = n_e.reshape((1,-1))
+        latent = source_embedding.reshape(1, -1)
+        latent /= np.linalg.norm(latent)
 
         return latent
 
@@ -278,6 +292,63 @@ class Models():
         
         self.syncvec.cpu()
         self.simswap512_model.run_with_iobinding(io_binding)
+
+    def calc_swapper_latent_ghost(self, source_embedding):
+        latent = source_embedding.reshape((1,-1))
+
+        return latent
+
+    def run_swapper_ghostface(self, image, embedding, output, swapper_model='GF2'):
+        if swapper_model == 'GF1':
+            if not self.ghostfacev1swap_model:
+                self.ghostfacev1swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_1_block.onnx", providers=self.providers)
+
+            ghostfaceswap_model = self.ghostfacev1swap_model
+            output_name = '781'
+            #output_name2 = 'onnx::ConvTranspose_239'
+        elif swapper_model == 'GF2':
+            if not self.ghostfacev2swap_model:
+                self.ghostfacev2swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_2_block.onnx", providers=self.providers)
+
+            ghostfaceswap_model = self.ghostfacev2swap_model
+            output_name = '1165'
+            #output_name2 = 'onnx::ConvTranspose_327'
+        elif swapper_model == 'GF3':
+            if not self.ghostfacev3swap_model:
+                self.ghostfacev3swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_3_block.onnx", providers=self.providers)
+
+            ghostfaceswap_model = self.ghostfacev3swap_model
+            output_name = '1549'
+            #output_name2 = 'onnx::ConvTranspose_415'
+
+        '''
+        ouput2 = torch.empty((1,1024,2,2), dtype=torch.float32, device='cuda').contiguous()
+        input63 = torch.empty((1,2048,4,4), dtype=torch.float32, device='cuda').contiguous()
+        input75 = torch.empty((1,1024,8,8), dtype=torch.float32, device='cuda').contiguous()
+        input87 = torch.empty((1,512,16,16), dtype=torch.float32, device='cuda').contiguous()
+        input99 = torch.empty((1,256,32,32), dtype=torch.float32, device='cuda').contiguous()
+        input111 = torch.empty((1,128,64,64), dtype=torch.float32, device='cuda').contiguous()
+        input123 = torch.empty((1,64,128,128), dtype=torch.float32, device='cuda').contiguous()
+        input127 = torch.empty((1,64,256,256), dtype=torch.float32, device='cuda').contiguous()
+        '''
+        
+        io_binding = ghostfaceswap_model.io_binding()
+        io_binding.bind_input(name='target', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='source', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
+        io_binding.bind_output(name=output_name, device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=output.data_ptr())
+        '''
+        io_binding.bind_output(name=output_name2, device_type='cuda', device_id=0, element_type=np.float32, shape=(1,1024,2,2), buffer_ptr=ouput2.data_ptr())
+        io_binding.bind_output(name='input.63', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,2048,4,4), buffer_ptr=input63.data_ptr())
+        io_binding.bind_output(name='input.75', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,1024,8,8), buffer_ptr=input75.data_ptr())
+        io_binding.bind_output(name='input.87', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512,16,16), buffer_ptr=input87.data_ptr())
+        io_binding.bind_output(name='input.99', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,256,32,32), buffer_ptr=input99.data_ptr())
+        io_binding.bind_output(name='input.111', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,128,64,64), buffer_ptr=input111.data_ptr())
+        io_binding.bind_output(name='input.123', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,64,128,128), buffer_ptr=input123.data_ptr())
+        io_binding.bind_output(name='input.127', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,64,256,256), buffer_ptr=input127.data_ptr())
+        '''
+
+        self.syncvec.cpu()
+        ghostfaceswap_model.run_with_iobinding(io_binding)
 
     def run_swap_stg1(self, embedding):
 
@@ -1510,7 +1581,7 @@ class Models():
             _scale = 512.0  / (max(w, h)*1.5)
             image, M = faceutil.transform(img, center, 512, _scale, rotate)
         else:
-            image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 512, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
+            image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 512, mode='arcface128', interpolation=v2.InterpolationMode.BILINEAR)
 
         image = image.permute(1,2,0)
 
@@ -1579,7 +1650,7 @@ class Models():
         if from_points == False:
             crop_image, affine_matrix = faceutil.warp_face_by_bounding_box_for_landmark_68(img, bbox, (256, 256))
         else:
-            crop_image, affine_matrix = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
+            crop_image, affine_matrix = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, mode='arcface128', interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', crop_image.permute(1, 2, 0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1626,7 +1697,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, mode='arcface128', interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1683,7 +1754,7 @@ class Models():
         if from_points == False:
             crop_image, detail = faceutil.warp_face_by_bounding_box_for_landmark_98(img, bbox, (256, 256))
         else:
-            crop_image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=256, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
+            crop_image, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=256, mode='arcface128', interpolation=v2.InterpolationMode.BILINEAR)
             #crop_image2 = crop_image.clone()
             h, w = (crop_image.size(dim=1), crop_image.size(dim=2))
         '''
@@ -1746,7 +1817,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 192, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, normalized=True, interpolation=v2.InterpolationMode.BILINEAR)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, image_size=192, mode='arcface128', interpolation=v2.InterpolationMode.BILINEAR)
         '''
         cv2.imshow('image', aimg.permute(1.2.0).to('cpu').numpy())
         cv2.waitKey(0)
@@ -1800,7 +1871,7 @@ class Models():
             #print('param:', img.size(), bbox, center, (192, 192), _scale, rotate)
             aimg, M = faceutil.transform(img, center, 256, _scale, rotate)
         else:
-            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, normalized=False, interpolation=v2.InterpolationMode.BILINEAR)
+            aimg, M = faceutil.warp_face_by_face_landmark_5(img, det_kpss, 256, mode='arcfacemap', interpolation=v2.InterpolationMode.BILINEAR)
             #aimg2 = aimg.clone()
         '''
         cv2.imshow('image', aimg.permute(1,2,0).to('cpu').numpy())
@@ -1872,7 +1943,7 @@ class Models():
     def recognize(self, recognition_model, img, face_kps, similarity_type):
         if similarity_type == 'Optimal':
             # Find transform & Transform
-            img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, image_size=112, use_src_map = True, interpolation=v2.InterpolationMode.BILINEAR)
+            img, _ = faceutil.warp_face_by_face_landmark_5(img, face_kps, mode='arcfacemap', interpolation=v2.InterpolationMode.BILINEAR)
         elif similarity_type == 'Pearl':
             # Find transform
             dst = self.arcface_dst.copy()
@@ -1894,13 +1965,21 @@ class Models():
             img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
             img = v2.functional.crop(img, 0,0, 112, 112)
 
-        # Switch to BGR and normalize
-        img = img.permute(1,2,0) #112,112,3
-        cropped_image = img
-        img = img[:, :, [2,1,0]]
-        img = torch.sub(img, 127.5)
-        img = torch.div(img, 127.5)
-        img = img.permute(2, 0, 1) #3,112,112
+        if recognition_model == self.swapper_model or recognition_model == self.simswap512_model:
+            # Switch to BGR and normalize
+            img = img.permute(1,2,0) #112,112,3
+            cropped_image = img
+            img = img[:, :, [2,1,0]]
+            img = torch.sub(img, 127.5)
+            img = torch.div(img, 127.5)
+            img = img.permute(2, 0, 1) #3,112,112
+        else:
+            cropped_image = img.permute(1,2,0) #112,112,3
+            # Converti a float32 e normalizza
+            img = torch.div(img.float(), 127.5)
+            img = torch.sub(img, 1)
+            # img è già in RGB quindi nessuna conversione.
+            #img = img[[2, 1, 0], :, :] # Inverte i canali da BGR a RGB (assumendo che l'input sia BGR)
 
         # Prepare data and find model parameters
         img = torch.unsqueeze(img, 0).contiguous()
