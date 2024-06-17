@@ -1965,7 +1965,7 @@ class Models():
             img = v2.functional.affine(img, tform.rotation*57.2958, (tform.translation[0], tform.translation[1]) , tform.scale, 0, center = (0,0) ) 
             img = v2.functional.crop(img, 0,0, 112, 112)
 
-        if recognition_model == self.swapper_model or recognition_model == self.simswap512_model:
+        if recognition_model == self.recognition_model or recognition_model == self.recognition_simswap_model:
             # Switch to BGR and normalize
             img = img.permute(1,2,0) #112,112,3
             cropped_image = img
