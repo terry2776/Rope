@@ -621,8 +621,23 @@ class VideoManager():
                     if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]:
                         s_e = found_face["AssignedEmbedding"]
                         # s_e = found_face['ptrdata']
+                        img_orig = torch.clone(img)
                         img = self.func_w_test("swap_video", self.swap_core, img, fface[0], s_e, fface[1], parameters, control)
                         # img = img.permute(2,0,1)
+
+                        if parameters['RestoreEyesSwitch']:
+                            try:
+                                img = self.restore_eyes(img_orig,img,fface[0], parameters['RestoreEyesSlider']/100, parameters['RestoreEyesFeatherSlider'], parameters['RestoreEyesSizeSlider'])
+                            except Exception as e:
+                                pass
+                                # print("Eyes Restore failed")
+                                # print(e)
+                        if parameters['RestoreMouthSwitch']:
+                            try:
+                                img = self.restore_mouth(img_orig,img,fface[0], parameters['RestoreMouthSlider']/100, parameters['RestoreMouthFeatherSlider'], parameters['RestoreMouthSizeSlider']/100)
+                            except Exception as e:
+                                pass
+
                     
             img = img.permute(1,2,0)
             if not control['MaskViewButton'] and parameters['OrientSwitch']:
@@ -1358,9 +1373,138 @@ class VideoManager():
         diff = diff.permute(2,0,1)
 
         return diff    
-    
 
+
+    def restore_mouth(self, img_orig, img_swap, kpss_orig, blend_alpha=0.5, feather_radius=10, size_factor=0.5):
+        """
+        Extract mouth from img_orig using the provided keypoints and place it in img_swap.
+        
+        Args:
+            img_orig (torch.Tensor): The original image tensor of shape (C, H, W) from which mouth is extracted.
+            img_swap (torch.Tensor): The target image tensor of shape (C, H, W) where mouth is placed.
+            kpss (list): List of keypoints arrays for detected faces. Each keypoints array contains coordinates for 5 keypoints.
+            
+        Returns:
+            torch.Tensor: The resulting image tensor with mouth from img_orig placed on img_swap.
+        """
+        left_mouth = np.array([int(val) for val in kpss_orig[3]])
+        right_mouth = np.array([int(val) for val in kpss_orig[4]])
+        nose = np.array([int(val) for val in kpss_orig[2]])
+
+        # Calculate the distance between the left and right corners of the mouth
+        mouth_distance = np.linalg.norm(left_mouth - right_mouth)
+        # print("mouth_distance", mouth_distance)
+        mouth_size = int(mouth_distance * size_factor)  # Adjust the fraction as needed
+        # print("mouth_size", mouth_size)
+
+        # Define the bounding box for the mouth
+        ymin_mouth = max(0, min(left_mouth[1], right_mouth[1]) - mouth_size)
+        ymax_mouth = min(img_orig.size(1), max(left_mouth[1], right_mouth[1]) + mouth_size)
+        xmin_mouth = max(0, left_mouth[0] - mouth_size)
+        xmax_mouth = min(img_orig.size(2), right_mouth[0] + mouth_size)
+        mouth_region_orig = img_orig[:, ymin_mouth:ymax_mouth, xmin_mouth:xmax_mouth]
+
+        # Blend mouth region with colors from img_swap
+        target_ymin_mouth = ymin_mouth
+        target_ymax_mouth = ymin_mouth + mouth_region_orig.size(1)
+        target_xmin_mouth = xmin_mouth
+        target_xmax_mouth = xmin_mouth + mouth_region_orig.size(2)
+        img_swap_mouth = img_swap[:, target_ymin_mouth:target_ymax_mouth, target_xmin_mouth:target_xmax_mouth]
+        blended_mouth = blend_alpha * img_swap_mouth + (1 - blend_alpha) * mouth_region_orig
+        blended_mouth = self.feather_blend(blended_mouth, img_swap_mouth, feather_radius)
+        img_swap[:, target_ymin_mouth:target_ymax_mouth, target_xmin_mouth:target_xmax_mouth] = blended_mouth
+        return img_swap
     
+    def restore_eyes(self,img_orig, img_swap, kpss_orig, blend_alpha=0.5, feather_radius=10, size_factor = 3.5):
+        """
+        Extract eyes from img_orig using the provided keypoints and place them in img_swap.
+        
+        Args:
+            img_orig (torch.Tensor): The original image tensor of shape (C, H, W) from which eyes are extracted.
+            img_swap (torch.Tensor): The target image tensor of shape (C, H, W) where eyes are placed.
+            kpss (list): List of keypoints arrays for detected faces. Each keypoints array contains coordinates for 5 keypoints.
+            
+        Returns:
+            torch.Tensor: The resulting image tensor with eyes from img_orig placed on img_swap.
+        """
+        left_eye = np.array([int(val) for val in kpss_orig[0]])
+        right_eye = np.array([int(val) for val in kpss_orig[1]])
+        # Calculate the distance between the eyes
+        eye_distance = np.linalg.norm(left_eye - right_eye)
+        # Define eye size as a fraction of the eye distance
+        eye_size = int(eye_distance / size_factor)  # Adjust the fraction as needed
+        # Extract left eye region from original image
+        ymin_left = max(0, left_eye[1] - eye_size)
+        ymax_left = min(img_orig.size(1), left_eye[1] + eye_size)
+        xmin_left = max(0, left_eye[0] - eye_size)
+        xmax_left = min(img_orig.size(2), left_eye[0] + eye_size)
+
+        left_eye_region_orig = img_orig[:, ymin_left:ymax_left, xmin_left:xmax_left]
+
+        # Extract right eye region from original image
+        ymin_right = max(0, right_eye[1] - eye_size)
+        ymax_right = min(img_orig.size(1), right_eye[1] + eye_size)
+        xmin_right = max(0, right_eye[0] - eye_size)
+        xmax_right = min(img_orig.size(2), right_eye[0] + eye_size)
+        
+        right_eye_region_orig = img_orig[:, ymin_right:ymax_right, xmin_right:xmax_right]
+        # Blend left eye region with colors from img_swap
+        target_ymin_left = ymin_left
+        target_ymax_left = ymin_left + left_eye_region_orig.size(1)
+        target_xmin_left = xmin_left
+        target_xmax_left = xmin_left + left_eye_region_orig.size(2)
+        
+        img_swap_left_eye = img_swap[:, target_ymin_left:target_ymax_left, target_xmin_left:target_xmax_left]
+        blended_left_eye = blend_alpha * img_swap_left_eye + (1 - blend_alpha) * left_eye_region_orig
+        
+        # Apply feathering to blend the borders
+        blended_left_eye = self.feather_blend(blended_left_eye, img_swap_left_eye, feather_radius)
+        
+        img_swap[:, target_ymin_left:target_ymax_left, target_xmin_left:target_xmax_left] = blended_left_eye
+    
+        # Blend right eye region with colors from img_swap
+        target_ymin_right = ymin_right
+        target_ymax_right = ymin_right + right_eye_region_orig.size(1)
+        target_xmin_right = xmin_right
+        target_xmax_right = xmin_right + right_eye_region_orig.size(2)
+        
+        img_swap_right_eye = img_swap[:, target_ymin_right:target_ymax_right, target_xmin_right:target_xmax_right]
+        blended_right_eye = blend_alpha * img_swap_right_eye + (1 - blend_alpha) * right_eye_region_orig
+        
+        # Apply feathering to blend the borders
+        blended_right_eye = self.feather_blend(blended_right_eye, img_swap_right_eye, feather_radius)
+        
+        img_swap[:, target_ymin_right:target_ymax_right, target_xmin_right:target_xmax_right] = blended_right_eye
+        
+        return img_swap
+
+    def feather_blend(self, src_region, target_region, feather_radius):
+        """
+        Apply feathering to blend the borders of src_region with target_region.
+
+        Args:
+            src_region (torch.Tensor): Source region tensor of shape (C, H, W).
+            target_region (torch.Tensor): Target region tensor of shape (C, H, W).
+            feather_radius (int): Radius of feathering effect.
+
+        Returns:
+            torch.Tensor: Blended region tensor with feathering applied.
+        """
+        _, h, w = src_region.size()
+        mask = torch.ones((1, h, w), dtype=torch.float32).cuda()
+
+        for y in range(feather_radius):
+            mask[:, y] *= y / feather_radius
+            mask[:, h - 1 - y] *= y / feather_radius
+
+        for x in range(feather_radius):
+            mask[:, :, x] *= x / feather_radius
+            mask[:, :, w - 1 - x] *= x / feather_radius
+
+        blended_region = mask * src_region + (1 - mask) * target_region
+
+        return blended_region
+
     def clear_mem(self):
         del self.swapper_model
         del self.GFPGAN_model
@@ -1385,7 +1529,7 @@ class VideoManager():
         self.resnet_model = []
         self.detection_model = []
         self.recognition_model = []
-                
+
         # test = swap.permute(1, 2, 0)
         # test = test.cpu().numpy()
         # cv2.imwrite('2.jpg', test) 

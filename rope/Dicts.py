@@ -213,6 +213,11 @@ DEFAULT_DATA = {
 'CLIPSwitchInfoText':               'TEXT MASKING:\nUse descriptions to identify objects that will be present in the final swapped image.',
 'CLIPSwitchState':                  False,
 
+'RestoreEyesSwitchInfoText':        'RESTORE EYES: \nRestore eyes from the original face',
+'RestoreEyesSwitchState':        False,
+'RestoreMouthSwitchInfoText':        'RESTORE MOUTH: \nRestore mouth from the original face',
+'RestoreMouthSwitchState':        False,
+
 # Sliders
 'BlendSliderAmount':                5,
 'BlendSliderInc':                   1,  
@@ -412,6 +417,42 @@ DEFAULT_DATA = {
 'ColorGammaSliderInfoText':               'GAMMA VALUE:\nChanges Gamma.',
 'ColorGammaSliderMax':                    2,
 'ColorGammaSliderMin':                    0,
+
+'RestoreEyesSliderAmount':               50,
+'RestoreEyesSliderInc':                  1,
+'RestoreEyesSliderInfoText':             'EYES BLEND SLIDER :\nIncrease this to show more of the swapped eyes. Decrease it to show more of the original eyes',
+'RestoreEyesSliderMax':                  100,
+'RestoreEyesSliderMin':                  1,
+
+'RestoreEyesSizeSliderAmount':               3,
+'RestoreEyesSizeSliderInc':                  0.5,
+'RestoreEyesSizeSliderInfoText':             'EYES SIZE FACTOR :\nReduce this when swapping faces zoomed out of the frame.',
+'RestoreEyesSizeSliderMax':                  4,
+'RestoreEyesSizeSliderMin':                  2,
+
+'RestoreEyesFeatherSliderAmount':               10,
+'RestoreEyesFeatherSliderInc':                  1,
+'RestoreEyesFeatherSliderInfoText':             'EYES FEATHER BLEND :\nAdjust the blending of eyes border. Increase this to show more of the original eyes. Decrease this to show more of the swapped eyes',
+'RestoreEyesFeatherSliderMax':                  100,
+'RestoreEyesFeatherSliderMin':                  1,
+
+'RestoreMouthSliderAmount':               50,
+'RestoreMouthSliderInc':                  1,
+'RestoreMouthSliderInfoText':             'MOUTH BLEND :\nIncrease this to show more of the swapped Mouth. Decrease it to show more of the original Mouth',
+'RestoreMouthSliderMax':                  100,
+'RestoreMouthSliderMin':                  1,
+
+'RestoreMouthSizeSliderAmount':               25,
+'RestoreMouthSizeSliderInc':                  5,
+'RestoreMouthSizeSliderInfoText':             'MOUTH SIZE :\nIncrease this when swapping faces zoomed out of the frame.',
+'RestoreMouthSizeSliderMax':                  60,
+'RestoreMouthSizeSliderMin':                  5,
+
+'RestoreMouthFeatherSliderAmount':               10,
+'RestoreMouthFeatherSliderInc':                  1,
+'RestoreMouthFeatherSliderInfoText':             'MOUTH FEATHER BLEND :\nAdjust the border of Mouth blending. Increase this to show more of the original Mouth. Decrease this to show more of the swapped Mouth',
+'RestoreMouthFeatherSliderMax':                  100,
+'RestoreMouthFeatherSliderMin':                  1,
 
 
 # Text Selection
