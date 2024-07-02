@@ -618,7 +618,7 @@ class VideoManager():
                     # sim between face in video and already found face
                     sim = self.findCosineDistance(fface[1], found_face["Embedding"])
                     # if the face[i] in the frame matches afound face[j] AND the found face is active (not []) 
-                    if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]: 
+                    if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]:
                         s_e = found_face["AssignedEmbedding"]
                         # s_e = found_face['ptrdata']
                         img = self.func_w_test("swap_video", self.swap_core, img, fface[0], s_e, fface[1], parameters, control)
@@ -1377,7 +1377,7 @@ class VideoManager():
         self.resnet_model = []
         self.detection_model = []
         self.recognition_model = []
-                
+
         # test = swap.permute(1, 2, 0)
         # test = test.cpu().numpy()
         # cv2.imwrite('2.jpg', test) 

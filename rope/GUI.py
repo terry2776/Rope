@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1500)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1460)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -886,7 +886,7 @@ class GUI(tk.Tk):
         self.widget['OrientSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OrientSlider', 'Angle', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
         row += top_border_delta
         self.static_widget['2'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta 
+        row += bottom_border_delta
 
         # Strength
         self.widget['StrengthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'StrengthSwitch', 'Strength', 3, self.update_data, 'parameter', 398, 20, 1, row)
@@ -931,7 +931,7 @@ class GUI(tk.Tk):
         self.widget['FaceParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceParserSlider', 'Background', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)
         #Neck
         self.widget['NeckParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NeckParserSlider', 'Neck', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        
+
         row += row_delta
         #Eyebrows
         self.widget['LeftEyeBrowParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LeftEyeBrowParserSlider', 'Left Eyebrow', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)

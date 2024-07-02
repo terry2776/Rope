@@ -18,27 +18,22 @@ src2 = np.array([[45.031, 50.118], [65.568, 50.872], [39.677, 68.111],
                  [45.177, 86.190], [64.246, 86.758]],
                 dtype=np.float32)
 
-# ---arcface frontal
-src3 = np.array([[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366],
-                 [41.5493, 92.3655], [70.7299, 92.2041]],
-                dtype=np.float32)
-
 # ---frontal
-src4 = np.array([[39.730, 51.138], [72.270, 51.138], [56.000, 68.493],
+src3 = np.array([[39.730, 51.138], [72.270, 51.138], [56.000, 68.493],
                  [42.463, 87.010], [69.537, 87.010]],
                 dtype=np.float32)
 
 # -->right
-src5 = np.array([[46.845, 50.872], [67.382, 50.118], [72.737, 68.111],
+src4 = np.array([[46.845, 50.872], [67.382, 50.118], [72.737, 68.111],
                  [48.167, 86.758], [67.236, 86.190]],
                 dtype=np.float32)
 
 # -->right profile
-src6 = np.array([[54.796, 49.990], [60.771, 50.115], [76.673, 69.007],
+src5 = np.array([[54.796, 49.990], [60.771, 50.115], [76.673, 69.007],
                  [55.388, 89.702], [61.257, 89.050]],
                 dtype=np.float32)
 
-src = np.array([src1, src2, src3, src4, src5, src6])
+src = np.array([src1, src2, src3, src4, src5])
 src_map = {112: src, 224: src * 2}
 
 arcface_src = np.array(
@@ -73,7 +68,7 @@ def transform(img, center, output_size, scale, rotation):
     t = t1 + t2 + t3 + t4
     M = t.params[0:2]
 
-    cropped = v2.functional.affine(img, t.rotation, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
+    cropped = v2.functional.affine(img, np.rad2deg(t.rotation), (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
     cropped = v2.functional.crop(cropped, 0,0, output_size, output_size)
 
     return cropped, M
@@ -538,7 +533,7 @@ def convert_face_landmark_478_to_5(face_landmark_478):
 
     return face_landmark_5
 
-def test_bbox_landmarks(img, bbox, kpss):
+def test_bbox_landmarks(img, bbox, kpss, caption='image', show_kpss_label=False):
         image = img.permute(1,2,0).to('cpu').numpy().copy()
         if len(bbox) > 0:
             box = bbox.astype(int)
@@ -551,15 +546,34 @@ def test_bbox_landmarks(img, bbox, kpss):
                 color = (0, 0, 255)
                 cv2.circle(image, (kps[0], kps[1]), 1, color,
                            2)
+                if show_kpss_label:
+                    match i:
+                        case 0:
+                            text = "LE"
+                        case 1:
+                            text = "RE"
+                        case 2:
+                            text = "NO"
+                        case 3:
+                            text = "LM"
+                        case 4:
+                            text = "RM"
+                    image = cv2.putText(image, text, (kps[0], kps[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
 
-        cv2.imshow('image', image) 
+        cv2.imshow(caption, image) 
         cv2.waitKey(0)         
         cv2.destroyAllWindows()
 
-def test_multi_bbox_landmarks(img, bboxes, kpss):
+def test_multi_bbox_landmarks(img, bboxes, kpss, caption='image', show_kpss_label=False):
     if len(bboxes) > 0 and len(kpss) > 0:
         for i in range(np.array(kpss).shape[0]):
-            test_bbox_landmarks(img, bboxes[i], kpss[i])
+            test_bbox_landmarks(img, bboxes[i], kpss[i], caption=caption, show_kpss_label=show_kpss_label)
+    elif len(bboxes) > 0:
+        for i in range(np.array(bboxes).shape[0]):
+            test_bbox_landmarks(img, bboxes[i], [], caption=caption, show_kpss_label=show_kpss_label)
+    elif len(kpss) > 0:
+        for i in range(np.array(kpss).shape[0]):
+            test_bbox_landmarks(img, [], kpss[i], caption=caption, show_kpss_label=show_kpss_label)
 
 def detect_img_color(img):
     frame = img.permute(1,2,0)
@@ -580,3 +594,4 @@ def detect_img_color(img):
         return 'GBR'
 
     return 'RGB'
+
