@@ -374,6 +374,23 @@ def warp_face_by_face_landmark_5(img, kpss, image_size=112, mode='arcface112', i
 
     return img, M
 
+def getRotationMatrix2D(center, output_size, scale, rotation, is_clockwise = True):
+    scale_ratio = scale
+    if not is_clockwise:
+        rotation = -rotation
+    rot = float(rotation) * np.pi / 180.0
+    t1 = trans.SimilarityTransform(scale=scale_ratio)
+    cx = center[0] * scale_ratio
+    cy = center[1] * scale_ratio
+    t2 = trans.SimilarityTransform(translation=(-1 * cx, -1 * cy))
+    t3 = trans.SimilarityTransform(rotation=rot)
+    t4 = trans.SimilarityTransform(translation=(output_size / 2,
+                                                output_size / 2))
+    t = t1 + t2 + t3 + t4
+    M = t.params[0:2]
+
+    return M
+
 def invertAffineTransform(M):
     t = trans.SimilarityTransform()
     t.params[0:2] = M
@@ -595,3 +612,13 @@ def detect_img_color(img):
 
     return 'RGB'
 
+def get_face_orientation(face_size, lmk):
+    assert lmk.shape == (5, 2)
+    tform = trans.SimilarityTransform()
+    src = np.squeeze(arcface_src, axis=0)
+    src = float(face_size) / 112.0 * src
+    tform.estimate(lmk, src)
+
+    angle_deg_to_front = np.rad2deg(tform.rotation)
+
+    return angle_deg_to_front

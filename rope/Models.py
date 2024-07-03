@@ -100,7 +100,7 @@ class Models():
 
         return memory_used, memory_total[0]
 
-    def run_detect(self, img, detect_mode='Retinaface', max_num=1, score=0.5, use_landmark_detection=False, landmark_detect_mode='98', landmark_score=0.5, from_points=False):
+    def run_detect(self, img, detect_mode='Retinaface', max_num=1, score=0.5, use_landmark_detection=False, landmark_detect_mode='98', landmark_score=0.5, from_points=False, rotation_angles:list[int]=[0]):
         bboxes = []
         kpss = []
 
@@ -108,26 +108,26 @@ class Models():
             if not self.retinaface_model:
                 self.retinaface_model = onnxruntime.InferenceSession('./models/det_10g.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_retinaface(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points)
+            bboxes, kpss = self.detect_retinaface(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points, rotation_angles=rotation_angles)
 
         elif detect_mode=='SCRDF':
             if not self.scrdf_model:
                 self.scrdf_model = onnxruntime.InferenceSession('./models/scrfd_2.5g_bnkps.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_scrdf(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points)
+            bboxes, kpss = self.detect_scrdf(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points, rotation_angles=rotation_angles)
 
         elif detect_mode=='Yolov8':
             if not self.yoloface_model:
                 self.yoloface_model = onnxruntime.InferenceSession('./models/yoloface_8n.onnx', providers=self.providers)
                 #self.insight106_model = onnxruntime.InferenceSession('./models/2d106det.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_yoloface(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points)
+            bboxes, kpss = self.detect_yoloface(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points, rotation_angles=rotation_angles)
 
         elif detect_mode=='Yunet':
             if not self.yunet_model:
                 self.yunet_model = onnxruntime.InferenceSession('./models/yunet_n_640_640.onnx', providers=self.providers)
 
-            bboxes, kpss = self.detect_yunet(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points)
+            bboxes, kpss = self.detect_yunet(img, max_num=max_num, score=score, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=landmark_score, from_points=from_points, rotation_angles=rotation_angles)
 
         return bboxes, kpss
 
@@ -540,17 +540,18 @@ class Models():
         self.syncvec.cpu()
         self.faceparser_model.run_with_iobinding(io_binding)
 
-    def detect_retinaface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points):
+    def detect_retinaface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
             img_landmark = img.clone()
 
         # Resize image to fit within the input_size
         input_size = (640, 640)
-        im_ratio = torch.div(img.size()[1], img.size()[2])
+        img_height, img_width = (img.size()[1], img.size()[2])
+        im_ratio = torch.div(img_height, img_width)
 
         # model_ratio = float(input_size[1]) / input_size[0]
         model_ratio = 1.0
-        if im_ratio>model_ratio:
+        if im_ratio > model_ratio:
             new_height = input_size[1]
             new_width = int(new_height / im_ratio)
         else:
@@ -565,87 +566,154 @@ class Models():
         det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device='cuda:0')
         det_img[:new_height,:new_width,  :] = img
 
-        # Switch to BGR and normalize
+        # Switch to RGB and normalize
         det_img = det_img[:, :, [2,1,0]]
         det_img = torch.sub(det_img, 127.5)
         det_img = torch.div(det_img, 128.0)
         det_img = det_img.permute(2, 0, 1) #3,128,128
 
-        # Prepare data and find model parameters
-        det_img = torch.unsqueeze(det_img, 0).contiguous()
-
-        io_binding = self.retinaface_model.io_binding()
-        io_binding.bind_input(name='input.1', device_type='cuda', device_id=0, element_type=np.float32,  shape=det_img.size(), buffer_ptr=det_img.data_ptr())
-
-        io_binding.bind_output('448', 'cuda')
-        io_binding.bind_output('471', 'cuda')
-        io_binding.bind_output('494', 'cuda')
-        io_binding.bind_output('451', 'cuda')
-        io_binding.bind_output('474', 'cuda')
-        io_binding.bind_output('497', 'cuda')
-        io_binding.bind_output('454', 'cuda')
-        io_binding.bind_output('477', 'cuda')
-        io_binding.bind_output('500', 'cuda')
-
-        # Sync and run model
-        self.syncvec.cpu()
-        self.retinaface_model.run_with_iobinding(io_binding)
-
-        net_outs = io_binding.copy_outputs_to_cpu()
-
-        input_height = det_img.shape[2]
-        input_width = det_img.shape[3]
-
-        fmc = 3
-        center_cache = {}
         scores_list = []
         bboxes_list = []
         kpss_list = []
-        for idx, stride in enumerate([8, 16, 32]):
-            scores = net_outs[idx]
-            bbox_preds = net_outs[idx+fmc]
-            bbox_preds = bbox_preds * stride
 
-            kps_preds = net_outs[idx+fmc*2] * stride
-            height = input_height // stride
-            width = input_width // stride
-            K = height * width
-            key = (height, width, stride)
-            if key in center_cache:
-                anchor_centers = center_cache[key]
+        cx = input_size[0] / 2  # image center x coordinate
+        cy = input_size[1] / 2  # image center y coordinate
+
+        if len(rotation_angles) > 1:
+            do_rotation = True
+        else:
+            do_rotation = False
+
+        for angle in rotation_angles:
+            # Prepare data and find model parameters
+            if angle != 0:
+                aimg, M = faceutil.transform(det_img, (cx, cy), 640, 1.0, angle)
+                IM = faceutil.invertAffineTransform(M)
+                aimg = torch.unsqueeze(aimg, 0).contiguous()
             else:
-                anchor_centers = np.stack(np.mgrid[:height, :width][::-1], axis=-1).astype(np.float32)
-                anchor_centers = (anchor_centers * stride).reshape( (-1, 2) )
-                anchor_centers = np.stack([anchor_centers]*2, axis=1).reshape( (-1,2) )
-                if len(center_cache)<100:
-                    center_cache[key] = anchor_centers
+                IM = None            
+                aimg = torch.unsqueeze(det_img, 0).contiguous()
 
-            pos_inds = np.where(scores>=score)[0]
+            io_binding = self.retinaface_model.io_binding()
+            io_binding.bind_input(name='input.1', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-            x1 = anchor_centers[:, 0] - bbox_preds[:, 0]
-            y1 = anchor_centers[:, 1] - bbox_preds[:, 1]
-            x2 = anchor_centers[:, 0] + bbox_preds[:, 2]
-            y2 = anchor_centers[:, 1] + bbox_preds[:, 3]
+            io_binding.bind_output('448', 'cuda')
+            io_binding.bind_output('471', 'cuda')
+            io_binding.bind_output('494', 'cuda')
+            io_binding.bind_output('451', 'cuda')
+            io_binding.bind_output('474', 'cuda')
+            io_binding.bind_output('497', 'cuda')
+            io_binding.bind_output('454', 'cuda')
+            io_binding.bind_output('477', 'cuda')
+            io_binding.bind_output('500', 'cuda')
 
-            bboxes = np.stack([x1, y1, x2, y2], axis=-1)
+            # Sync and run model
+            syncvec = self.syncvec.cpu()
+            self.retinaface_model.run_with_iobinding(io_binding)
 
-            pos_scores = scores[pos_inds]
-            pos_bboxes = bboxes[pos_inds]
-            scores_list.append(pos_scores)
-            bboxes_list.append(pos_bboxes)
+            net_outs = io_binding.copy_outputs_to_cpu()
 
-            preds = []
-            for i in range(0, kps_preds.shape[1], 2):
-                px = anchor_centers[:, i%2] + kps_preds[:, i]
-                py = anchor_centers[:, i%2+1] + kps_preds[:, i+1]
+            input_height = aimg.shape[2]
+            input_width = aimg.shape[3]
 
-                preds.append(px)
-                preds.append(py)
-            kpss = np.stack(preds, axis=-1)
-            #kpss = kps_preds
-            kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
-            pos_kpss = kpss[pos_inds]
-            kpss_list.append(pos_kpss)
+            fmc = 3
+            center_cache = {}
+            for idx, stride in enumerate([8, 16, 32]):
+                scores = net_outs[idx]
+                bbox_preds = net_outs[idx+fmc]
+                bbox_preds = bbox_preds * stride
+
+                kps_preds = net_outs[idx+fmc*2] * stride
+                height = input_height // stride
+                width = input_width // stride
+                K = height * width
+                key = (height, width, stride)
+                if key in center_cache:
+                    anchor_centers = center_cache[key]
+                else:
+                    anchor_centers = np.stack(np.mgrid[:height, :width][::-1], axis=-1).astype(np.float32)
+                    anchor_centers = (anchor_centers * stride).reshape( (-1, 2) )
+                    anchor_centers = np.stack([anchor_centers]*2, axis=1).reshape( (-1,2) )
+                    if len(center_cache)<100:
+                        center_cache[key] = anchor_centers
+
+                pos_inds = np.where(scores>=score)[0]
+
+                x1 = anchor_centers[:, 0] - bbox_preds[:, 0]
+                y1 = anchor_centers[:, 1] - bbox_preds[:, 1]
+                x2 = anchor_centers[:, 0] + bbox_preds[:, 2]
+                y2 = anchor_centers[:, 1] + bbox_preds[:, 3]
+
+                bboxes = np.stack([x1, y1, x2, y2], axis=-1)
+
+                pos_scores = scores[pos_inds]
+                pos_bboxes = bboxes[pos_inds]
+
+                # bboxes
+                if angle != 0:
+                    if len(pos_bboxes) > 0:
+                        # Split the points into coordinates (x1, y1) and (x2, y2)
+                        points1 = pos_bboxes[:, :2]  # (x1, y1)
+                        points2 = pos_bboxes[:, 2:]  # (x2, y2)
+
+                        # Apply the inverse of the rotation matrix to points1 and points2
+                        points1 = faceutil.trans_points2d(points1, IM)
+                        points2 = faceutil.trans_points2d(points2, IM)
+
+                        _x1 = points1[:, 0]
+                        _y1 = points1[:, 1]
+                        _x2 = points2[:, 0]
+                        _y2 = points2[:, 1]
+
+                        if angle in (-270, 90):
+                            # x1, y2, x2, y1
+                            points1 = np.stack((_x1, _y2), axis=1)
+                            points2 = np.stack((_x2, _y1), axis=1)
+                        elif angle in (-180, 180):
+                            # x2, y2, x1, y1
+                            points1 = np.stack((_x2, _y2), axis=1)
+                            points2 = np.stack((_x1, _y1), axis=1)
+                        elif angle in (-90, 270):
+                            # x2, y1, x1, y2
+                            points1 = np.stack((_x2, _y1), axis=1)
+                            points2 = np.stack((_x1, _y2), axis=1)
+
+                        # Reassemble the transformed points into the format [x1', y1', x2', y2']
+                        pos_bboxes = np.hstack((points1, points2))
+
+                # kpss
+                preds = []
+                for i in range(0, kps_preds.shape[1], 2):
+                    px = anchor_centers[:, i%2] + kps_preds[:, i]
+                    py = anchor_centers[:, i%2+1] + kps_preds[:, i+1]
+
+                    preds.append(px)
+                    preds.append(py)
+                kpss = np.stack(preds, axis=-1)
+                kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
+                pos_kpss = kpss[pos_inds]
+
+                if do_rotation:
+                    for i in range(len(pos_kpss)):
+                        face_size = max(pos_bboxes[i][2] - pos_bboxes[i][0], pos_bboxes[i][3] - pos_bboxes[i][1])
+                        angle_deg_to_front = faceutil.get_face_orientation(face_size, pos_kpss[i])
+                        if angle_deg_to_front < -50.00 or angle_deg_to_front > 50.00:
+                            pos_scores[i] = 0.0
+
+                        if angle != 0:
+                            pos_kpss[i] = faceutil.trans_points2d(pos_kpss[i], IM)
+
+                    pos_inds = np.where(pos_scores>=score)[0]
+                    pos_scores = pos_scores[pos_inds]
+                    pos_bboxes = pos_bboxes[pos_inds]
+                    pos_kpss = pos_kpss[pos_inds]
+
+                kpss_list.append(pos_kpss)
+                bboxes_list.append(pos_bboxes)
+                scores_list.append(pos_scores)
+
+        if len(bboxes_list) == 0:
+            return [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
@@ -693,9 +761,11 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
-        if max_num > 0 and det.shape[0] > max_num:
+        #if max_num > 0 and det.shape[0] > max_num:
+        if max_num > 0 and det.shape[0] > 1:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
-            det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+            #det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+            det_img_center = img_height // 2, img_width // 2
             offsets = np.vstack([
                 (det[:, 0] + det[:, 2]) / 2 - det_img_center[1],
                 (det[:, 1] + det[:, 3]) / 2 - det_img_center[0]
@@ -719,8 +789,6 @@ class Models():
                 landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score, from_points)
                 if len(landmark_kpss) > 0:
                     if len(landmark_scores) > 0:
-                        #print(np.mean(landmark_scores))
-                        #print(np.mean(score_values[i]))
                         if np.mean(landmark_scores) > np.mean(score_values[i]):
                             kpss[i] = landmark_kpss
                     else:
@@ -940,16 +1008,18 @@ class Models():
 
         return kpss_ave
 
-    def detect_scrdf(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points):
+    def detect_scrdf(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
             img_landmark = img.clone()
 
         # Resize image to fit within the input_size
         input_size = (640, 640)
-        im_ratio = torch.div(img.size()[1], img.size()[2])
+        img_height, img_width = (img.size()[1], img.size()[2])
+        im_ratio = torch.div(img_height, img_width)
 
-        model_ratio = float(input_size[1]) / input_size[0]
-        if im_ratio>model_ratio:
+        # model_ratio = float(input_size[1]) / input_size[0]
+        model_ratio = 1.0
+        if im_ratio > model_ratio:
             new_height = input_size[1]
             new_width = int(new_height / im_ratio)
         else:
@@ -964,86 +1034,153 @@ class Models():
         det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device='cuda:0')
         det_img[:new_height,:new_width,  :] = img
 
-        # Switch to BGR and normalize
+        # Switch to RGB and normalize
         det_img = det_img[:, :, [2,1,0]]
         det_img = torch.sub(det_img, 127.5)
         det_img = torch.div(det_img, 128.0)
         det_img = det_img.permute(2, 0, 1) #3,128,128
 
-        # Prepare data and find model parameters
-        det_img = torch.unsqueeze(det_img, 0).contiguous()
-        input_name = self.scrdf_model.get_inputs()[0].name
+        scores_list = []
+        bboxes_list = []
+        kpss_list = []
 
+        cx = input_size[0] / 2  # image center x coordinate
+        cy = input_size[1] / 2  # image center y coordinate
+
+        if len(rotation_angles) > 1:
+            do_rotation = True
+        else:
+            do_rotation = False
+
+        input_name = self.scrdf_model.get_inputs()[0].name
         outputs = self.scrdf_model.get_outputs()
         output_names = []
         for o in outputs:
             output_names.append(o.name)
 
-        io_binding = self.scrdf_model.io_binding()
-        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=det_img.size(), buffer_ptr=det_img.data_ptr())
-
-        for i in range(len(output_names)):
-            io_binding.bind_output(output_names[i], 'cuda')
-
-        # Sync and run model
-        syncvec = self.syncvec.cpu()
-        self.scrdf_model.run_with_iobinding(io_binding)
-
-        net_outs = io_binding.copy_outputs_to_cpu()
-
-        input_height = det_img.shape[2]
-        input_width = det_img.shape[3]
-
-        fmc = 3
-        center_cache = {}
-        scores_list = []
-        bboxes_list = []
-        kpss_list = []
-        for idx, stride in enumerate([8, 16, 32]):
-            scores = net_outs[idx]
-            bbox_preds = net_outs[idx+fmc]
-            bbox_preds = bbox_preds * stride
-
-            kps_preds = net_outs[idx+fmc*2] * stride
-            height = input_height // stride
-            width = input_width // stride
-            K = height * width
-            key = (height, width, stride)
-            if key in center_cache:
-                anchor_centers = center_cache[key]
+        for angle in rotation_angles:
+            # Prepare data and find model parameters
+            if angle != 0:
+                aimg, M = faceutil.transform(det_img, (cx, cy), 640, 1.0, angle)
+                IM = faceutil.invertAffineTransform(M)
+                aimg = torch.unsqueeze(aimg, 0).contiguous()
             else:
-                anchor_centers = np.stack(np.mgrid[:height, :width][::-1], axis=-1).astype(np.float32)
-                anchor_centers = (anchor_centers * stride).reshape( (-1, 2) )
-                anchor_centers = np.stack([anchor_centers]*2, axis=1).reshape( (-1,2) )
-                if len(center_cache)<100:
-                    center_cache[key] = anchor_centers
+                IM = None
+                aimg = torch.unsqueeze(det_img, 0).contiguous()
 
-            pos_inds = np.where(scores>=score)[0]
+            io_binding = self.scrdf_model.io_binding()
+            io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-            x1 = anchor_centers[:, 0] - bbox_preds[:, 0]
-            y1 = anchor_centers[:, 1] - bbox_preds[:, 1]
-            x2 = anchor_centers[:, 0] + bbox_preds[:, 2]
-            y2 = anchor_centers[:, 1] + bbox_preds[:, 3]
+            for i in range(len(output_names)):
+                io_binding.bind_output(output_names[i], 'cuda')
 
-            bboxes = np.stack([x1, y1, x2, y2], axis=-1)
+            # Sync and run model
+            syncvec = self.syncvec.cpu()
+            self.scrdf_model.run_with_iobinding(io_binding)
 
-            pos_scores = scores[pos_inds]
-            pos_bboxes = bboxes[pos_inds]
-            scores_list.append(pos_scores)
-            bboxes_list.append(pos_bboxes)
+            net_outs = io_binding.copy_outputs_to_cpu()
 
-            preds = []
-            for i in range(0, kps_preds.shape[1], 2):
-                px = anchor_centers[:, i%2] + kps_preds[:, i]
-                py = anchor_centers[:, i%2+1] + kps_preds[:, i+1]
+            input_height = aimg.shape[2]
+            input_width = aimg.shape[3]
 
-                preds.append(px)
-                preds.append(py)
-            kpss = np.stack(preds, axis=-1)
-            #kpss = kps_preds
-            kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
-            pos_kpss = kpss[pos_inds]
-            kpss_list.append(pos_kpss)
+            fmc = 3
+            center_cache = {}
+            for idx, stride in enumerate([8, 16, 32]):
+                scores = net_outs[idx]
+                bbox_preds = net_outs[idx+fmc]
+                bbox_preds = bbox_preds * stride
+
+                kps_preds = net_outs[idx+fmc*2] * stride
+                height = input_height // stride
+                width = input_width // stride
+                K = height * width
+                key = (height, width, stride)
+                if key in center_cache:
+                    anchor_centers = center_cache[key]
+                else:
+                    anchor_centers = np.stack(np.mgrid[:height, :width][::-1], axis=-1).astype(np.float32)
+                    anchor_centers = (anchor_centers * stride).reshape( (-1, 2) )
+                    anchor_centers = np.stack([anchor_centers]*2, axis=1).reshape( (-1,2) )
+                    if len(center_cache)<100:
+                        center_cache[key] = anchor_centers
+
+                pos_inds = np.where(scores>=score)[0]
+
+                x1 = anchor_centers[:, 0] - bbox_preds[:, 0]
+                y1 = anchor_centers[:, 1] - bbox_preds[:, 1]
+                x2 = anchor_centers[:, 0] + bbox_preds[:, 2]
+                y2 = anchor_centers[:, 1] + bbox_preds[:, 3]
+
+                bboxes = np.stack([x1, y1, x2, y2], axis=-1)
+
+                pos_scores = scores[pos_inds]
+                pos_bboxes = bboxes[pos_inds]
+
+                # bboxes
+                if angle != 0:
+                    if len(pos_bboxes) > 0:
+                        # Split the points into coordinates (x1, y1) and (x2, y2)
+                        points1 = pos_bboxes[:, :2]  # (x1, y1)
+                        points2 = pos_bboxes[:, 2:]  # (x2, y2)
+
+                        # Apply the inverse of the rotation matrix to points1 and points2
+                        points1 = faceutil.trans_points2d(points1, IM)
+                        points2 = faceutil.trans_points2d(points2, IM)
+
+                        _x1 = points1[:, 0]
+                        _y1 = points1[:, 1]
+                        _x2 = points2[:, 0]
+                        _y2 = points2[:, 1]
+
+                        if angle in (-270, 90):
+                            # x1, y2, x2, y1
+                            points1 = np.stack((_x1, _y2), axis=1)
+                            points2 = np.stack((_x2, _y1), axis=1)
+                        elif angle in (-180, 180):
+                            # x2, y2, x1, y1
+                            points1 = np.stack((_x2, _y2), axis=1)
+                            points2 = np.stack((_x1, _y1), axis=1)
+                        elif angle in (-90, 270):
+                            # x2, y1, x1, y2
+                            points1 = np.stack((_x2, _y1), axis=1)
+                            points2 = np.stack((_x1, _y2), axis=1)
+
+                        # Reassemble the transformed points into the format [x1', y1', x2', y2']
+                        pos_bboxes = np.hstack((points1, points2))
+
+                # kpss
+                preds = []
+                for i in range(0, kps_preds.shape[1], 2):
+                    px = anchor_centers[:, i%2] + kps_preds[:, i]
+                    py = anchor_centers[:, i%2+1] + kps_preds[:, i+1]
+
+                    preds.append(px)
+                    preds.append(py)
+                kpss = np.stack(preds, axis=-1)
+                kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
+                pos_kpss = kpss[pos_inds]
+
+                if do_rotation:
+                    for i in range(len(pos_kpss)):
+                        face_size = max(pos_bboxes[i][2] - pos_bboxes[i][0], pos_bboxes[i][3] - pos_bboxes[i][1])
+                        angle_deg_to_front = faceutil.get_face_orientation(face_size, pos_kpss[i])
+                        if angle_deg_to_front < -50.00 or angle_deg_to_front > 50.00:
+                            pos_scores[i] = 0.0
+
+                        if angle != 0:
+                            pos_kpss[i] = faceutil.trans_points2d(pos_kpss[i], IM)
+
+                    pos_inds = np.where(pos_scores>=score)[0]
+                    pos_scores = pos_scores[pos_inds]
+                    pos_bboxes = pos_bboxes[pos_inds]
+                    pos_kpss = pos_kpss[pos_inds]
+
+                kpss_list.append(pos_kpss)
+                bboxes_list.append(pos_bboxes)
+                scores_list.append(pos_scores)
+
+        if len(bboxes_list) == 0:
+            return [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
@@ -1091,10 +1228,11 @@ class Models():
         kpss = kpss[order,:,:]
         kpss = kpss[keep,:,:]
 
-        if max_num > 0 and det.shape[0] > max_num:
-            area = (det[:, 2] - det[:, 0]) * (det[:, 3] -
-                                                    det[:, 1])
-            det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+        #if max_num > 0 and det.shape[0] > max_num:
+        if max_num > 0 and det.shape[0] > 1:
+            area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
+            #det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+            det_img_center = img_height // 2, img_width // 2
             offsets = np.vstack([
                 (det[:, 0] + det[:, 2]) / 2 - det_img_center[1],
                 (det[:, 1] + det[:, 3]) / 2 - det_img_center[0]
@@ -1118,8 +1256,6 @@ class Models():
                 landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score, from_points)
                 if len(landmark_kpss) > 0:
                     if len(landmark_scores) > 0:
-                        #print(np.mean(landmark_scores))
-                        #print(np.mean(score_values[i]))
                         if np.mean(landmark_scores) > np.mean(score_values[i]):
                             kpss[i] = landmark_kpss
                     else:
@@ -1127,86 +1263,234 @@ class Models():
 
         return det, kpss
 
-    def detect_yoloface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points):
+    def detect_yoloface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
             img_landmark = img.clone()
 
-        height = img.size(dim=1)
-        width = img.size(dim=2)
-        length = max((height, width))
+        # Resize image to fit within the input_size
+        input_size = (640, 640)
+        img_height, img_width = (img.size()[1], img.size()[2])
+        im_ratio = torch.div(img_height, img_width)
 
-        image = torch.zeros((length, length, 3), dtype=torch.uint8, device='cuda')
+        # model_ratio = float(input_size[1]) / input_size[0]
+        model_ratio = 1.0
+        if im_ratio>model_ratio:
+            new_height = input_size[1]
+            new_width = int(new_height / im_ratio)
+        else:
+            new_width = input_size[0]
+            new_height = int(new_width * im_ratio)
+        det_scale = torch.div(new_height,  img.size()[1])
+
+        resize = v2.Resize((new_height, new_width), antialias=True)
+        img = resize(img)
         img = img.permute(1,2,0)
 
-        image[0:height, 0:width] = img
-        scale = length/640.0
-        image = torch.div(image, 255.0)
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
+        det_img[:new_height,:new_width,  :] = img
+        
+        det_img = det_img.permute(2, 0, 1)
 
-        t640 = v2.Resize((640, 640), antialias=False)
-        image = image.permute(2, 0, 1)
-        image = t640(image)
-
-        image = torch.unsqueeze(image, 0).contiguous()
-
-        io_binding = self.yoloface_model.io_binding()
-        io_binding.bind_input(name='images', device_type='cuda', device_id=0, element_type=np.float32,  shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output('output0', 'cuda')
-
-        # Sync and run model
-        self.syncvec.cpu()
-        self.yoloface_model.run_with_iobinding(io_binding)
-
-        net_outs = io_binding.copy_outputs_to_cpu()
-
-        outputs = np.squeeze(net_outs).T
-
-        bbox_raw, score_raw, kps_raw = np.split(outputs, [4, 5], axis=1)
-
-        bbox_list = []
-        score_list = []
-        kps_list = []
-        keep_indices = np.where(score_raw > score)[0]
-
-        if keep_indices.any():
-            bbox_raw, kps_raw, score_raw = bbox_raw[keep_indices], kps_raw[keep_indices], score_raw[keep_indices]
-
-            bbox_raw = bbox_raw * scale
-
-            for bbox in bbox_raw:
-                bbox_list.append(np.array([(bbox[0]-bbox[2]/2), (bbox[1]-bbox[3]/2), (bbox[0]+bbox[2]/2), (bbox[1]+bbox[3]/2)]))
-
-            kps_raw = kps_raw * scale
-
-            for kps in kps_raw:
-                indexes = np.arange(0, len(kps), 3)
-                temp_kps = []
-                for index in indexes:
-                    temp_kps.append([kps[index], kps[index + 1]])
-                kps_list.append(np.array(temp_kps))
-            score_list = score_raw.ravel().tolist()
-
-        result_boxes = cv2.dnn.NMSBoxes(bbox_list, score_list, 0.25, 0.45, 0.5)
-
+        scores_list = []
         bboxes_list = []
         kpss_list = []
-        for r in result_boxes:
-            if r==max_num:
-                break
-            if use_landmark_detection and len(kps_list[r]) > 0:
-                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, bbox_list[r], kps_list[r], landmark_detect_mode, landmark_score, from_points)
+
+        cx = input_size[0] / 2  # image center x coordinate
+        cy = input_size[1] / 2  # image center y coordinate
+
+        if len(rotation_angles) > 1:
+            do_rotation = True
+        else:
+            do_rotation = False
+
+        for angle in rotation_angles:
+            # Prepare data and find model parameters
+            if angle != 0:
+                aimg, M = faceutil.transform(det_img, (cx, cy), 640, 1.0, angle)
+                IM = faceutil.invertAffineTransform(M)
+                aimg = aimg.permute(1, 2, 0)
+                aimg = torch.div(aimg, 255.0)
+                aimg = aimg.permute(2, 0, 1)
+                aimg = torch.unsqueeze(aimg, 0).contiguous()
+            else:
+                aimg = det_img.permute(1, 2, 0)
+                aimg = torch.div(aimg, 255.0)
+                aimg = aimg.permute(2, 0, 1)
+                aimg = torch.unsqueeze(aimg, 0).contiguous()
+                IM = None
+
+            io_binding = self.yoloface_model.io_binding()
+            io_binding.bind_input(name='images', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_output('output0', 'cuda')
+
+            # Sync and run model
+            self.syncvec.cpu()
+            self.yoloface_model.run_with_iobinding(io_binding)
+
+            net_outs = io_binding.copy_outputs_to_cpu()
+
+            outputs = np.squeeze(net_outs).T
+
+            bbox_raw, score_raw, kps_raw = np.split(outputs, [4, 5], axis=1)
+
+            keep_indices = np.where(score_raw > score)[0]
+
+            if keep_indices.any():
+                bbox_raw, kps_raw, score_raw = bbox_raw[keep_indices], kps_raw[keep_indices], score_raw[keep_indices]
+
+                # Compute the transformed bounding box coordinates
+                x1 = bbox_raw[:, 0] - bbox_raw[:, 2] / 2
+                y1 = bbox_raw[:, 1] - bbox_raw[:, 3] / 2
+                x2 = bbox_raw[:, 0] + bbox_raw[:, 2] / 2
+                y2 = bbox_raw[:, 1] + bbox_raw[:, 3] / 2
+
+                # Stack the results into a single array
+                bboxes_raw = np.stack((x1, y1, x2, y2), axis=-1)
+                
+                # bboxes
+                if angle != 0:
+                    if len(bboxes_raw) > 0:
+                        # Split the points into coordinates (x1, y1) and (x2, y2)
+                        points1 = bboxes_raw[:, :2]  # (x1, y1)
+                        points2 = bboxes_raw[:, 2:]  # (x2, y2)
+
+                        # Apply the inverse of the rotation matrix to points1 and points2
+                        points1 = faceutil.trans_points2d(points1, IM)
+                        points2 = faceutil.trans_points2d(points2, IM)
+
+                        _x1 = points1[:, 0]
+                        _y1 = points1[:, 1]
+                        _x2 = points2[:, 0]
+                        _y2 = points2[:, 1]
+
+                        if angle in (-270, 90):
+                            # x1, y2, x2, y1
+                            points1 = np.stack((_x1, _y2), axis=1)
+                            points2 = np.stack((_x2, _y1), axis=1)
+                        elif angle in (-180, 180):
+                            # x2, y2, x1, y1
+                            points1 = np.stack((_x2, _y2), axis=1)
+                            points2 = np.stack((_x1, _y1), axis=1)
+                        elif angle in (-90, 270):
+                            # x2, y1, x1, y2
+                            points1 = np.stack((_x2, _y1), axis=1)
+                            points2 = np.stack((_x1, _y2), axis=1)
+
+                        # Reassemble the transformed points into the format [x1', y1', x2', y2']
+                        bboxes_raw = np.hstack((points1, points2))
+
+                kps_list = []
+                for kps in kps_raw:
+                    indexes = np.arange(0, len(kps), 3)
+                    temp_kps = []
+                    for index in indexes:
+                        temp_kps.append([kps[index], kps[index + 1]])
+                    kps_list.append(np.array(temp_kps))
+
+                kpss_raw = np.stack(kps_list)
+
+                if do_rotation:
+                    for i in range(len(kpss_raw)):
+                        face_size = max(bboxes_raw[i][2] - bboxes_raw[i][0], bboxes_raw[i][3] - bboxes_raw[i][1])
+                        angle_deg_to_front = faceutil.get_face_orientation(face_size, kpss_raw[i])
+                        if angle_deg_to_front < -50.00 or angle_deg_to_front > 50.00:
+                            score_raw[i] = 0.0
+
+                        if angle != 0:
+                            kpss_raw[i] = faceutil.trans_points2d(kpss_raw[i], IM)
+
+                    keep_indices = np.where(score_raw>=score)[0]
+                    score_raw = score_raw[keep_indices]
+                    bboxes_raw = bboxes_raw[keep_indices]
+                    kpss_raw = kpss_raw[keep_indices]
+
+                kpss_list.append(kpss_raw)
+                bboxes_list.append(bboxes_raw)
+                scores_list.append(score_raw)
+
+        if len(bboxes_list) == 0:
+            return [], []
+
+        scores = np.vstack(scores_list)
+        scores_ravel = scores.ravel()
+        order = scores_ravel.argsort()[::-1]
+
+        det_scale = det_scale.numpy()###
+
+        bboxes = np.vstack(bboxes_list) / det_scale
+
+        kpss = np.vstack(kpss_list) / det_scale
+        pre_det = np.hstack((bboxes, scores)).astype(np.float32, copy=False)
+        pre_det = pre_det[order, :]
+
+        dets = pre_det
+        thresh = 0.4
+        x1 = dets[:, 0]
+        y1 = dets[:, 1]
+        x2 = dets[:, 2]
+        y2 = dets[:, 3]
+        scoresb = dets[:, 4]
+
+        areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+        orderb = scoresb.argsort()[::-1]
+
+        keep = []
+        while orderb.size > 0:
+            i = orderb[0]
+            keep.append(i)
+            xx1 = np.maximum(x1[i], x1[orderb[1:]])
+            yy1 = np.maximum(y1[i], y1[orderb[1:]])
+            xx2 = np.minimum(x2[i], x2[orderb[1:]])
+            yy2 = np.minimum(y2[i], y2[orderb[1:]])
+
+            w = np.maximum(0.0, xx2 - xx1 + 1)
+            h = np.maximum(0.0, yy2 - yy1 + 1)
+
+            inter = w * h
+            ovr = inter / (areas[i] + areas[orderb[1:]] - inter)
+
+            inds = np.where(ovr <= thresh)[0]
+            orderb = orderb[inds + 1]
+
+        det = pre_det[keep, :]
+
+        kpss = kpss[order,:,:]
+        kpss = kpss[keep,:,:]
+
+        #if max_num > 0 and det.shape[0] > max_num:
+        if max_num > 0 and det.shape[0] > 1:
+            area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
+            #det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+            det_img_center = img_height // 2, img_width // 2
+            offsets = np.vstack([
+                (det[:, 0] + det[:, 2]) / 2 - det_img_center[1],
+                (det[:, 1] + det[:, 3]) / 2 - det_img_center[0]
+            ])
+            offset_dist_squared = np.sum(np.power(offsets, 2.0), 0)
+
+            values = area - offset_dist_squared * 2.0  # some extra weight on the centering
+            bindex = np.argsort(values)[::-1]  # some extra weight on the centering
+            bindex = bindex[0:max_num]
+
+            det = det[bindex, :]
+            if kpss is not None:
+                kpss = kpss[bindex, :]
+
+        score_values = det[:, 4]
+        # delete score column
+        det = np.delete(det, 4, 1)
+
+        if use_landmark_detection and len(kpss) > 0:
+            for i in range(kpss.shape[0]):
+                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score, from_points)
                 if len(landmark_kpss) > 0:
                     if len(landmark_scores) > 0:
-                        #print(np.mean(landmark_scores))
-                        #print(np.mean(score_list[r]))
-                        if np.mean(landmark_scores) > np.mean(score_list[r]):
-                            kps_list[r] = landmark_kpss
+                        if np.mean(landmark_scores) > np.mean(score_values[i]):
+                            kpss[i] = landmark_kpss
                     else:
-                        kps_list[r] = landmark_kpss
+                        kpss[i] = landmark_kpss
 
-            bboxes_list.append(bbox_list[r])
-            kpss_list.append(kps_list[r])
-
-        return np.array(bboxes_list), np.array(kpss_list)
+        return det, kpss
 
     def detect_yoloface2(self, image_in, max_num, score):
         img = image_in.detach().clone()
@@ -1435,36 +1719,50 @@ class Models():
         # cv2.imwrite('2.jpg', test)
         #
         # return np.array(result)
-    def detect_yunet(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points):
+
+    def detect_yunet(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
             img_landmark = img.clone()
-
-        height = img.size(dim=1)
-        width = img.size(dim=2)
+        
+        # Resize image to fit within the input_size
         input_size = (640, 640)
-        im_ratio = float(height) / width
-        model_ratio = float(input_size[1]) / input_size[0]
+        img_height, img_width = (img.size()[1], img.size()[2])
+        im_ratio = torch.div(img_height, img_width)
+
+        # model_ratio = float(input_size[1]) / input_size[0]
+        model_ratio = 1.0
         if im_ratio > model_ratio:
             new_height = input_size[1]
             new_width = int(new_height / im_ratio)
         else:
             new_width = input_size[0]
             new_height = int(new_width * im_ratio)
-        det_scale = float(new_height) / height
+        det_scale = torch.div(new_height,  img.size()[1])
 
-        t640 = v2.Resize((new_height, new_width), antialias=False)
-        img = t640(img)
+        resize = v2.Resize((new_height, new_width), antialias=False)
+        img = resize(img)
+
+        img = img.permute(1,2,0)
+
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
+        det_img[:new_height,:new_width,  :] = img
 
         # Switch to BGR
-        img = img.permute(1,2,0)
-        img = img[:, :, [2,1,0]]
+        det_img = det_img[:, :, [2,1,0]]
 
-        image = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
-        image[:new_height, :new_width, :] = img
+        det_img = det_img.permute(2, 0, 1) #3,640,640
 
-        image = image.permute(2, 0, 1)
-        image = torch.unsqueeze(image, 0).contiguous()
-        image = image.to(dtype=torch.float32)
+        scores_list = []
+        bboxes_list = []
+        kpss_list = []
+
+        cx = input_size[0] / 2  # image center x coordinate
+        cy = input_size[1] / 2  # image center y coordinate
+
+        if len(rotation_angles) > 1:
+            do_rotation = True
+        else:
+            do_rotation = False
 
         input_name = self.yunet_model.get_inputs()[0].name
         outputs = self.yunet_model.get_outputs()
@@ -1472,61 +1770,133 @@ class Models():
         for o in outputs:
             output_names.append(o.name)
 
-        io_binding = self.yunet_model.io_binding() 
-        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=image.size(), buffer_ptr=image.data_ptr())
+        for angle in rotation_angles:
+            # Prepare data and find model parameters
+            if angle != 0:
+                aimg, M = faceutil.transform(det_img, (cx, cy), 640, 1.0, angle)
+                IM = faceutil.invertAffineTransform(M)
+                aimg = torch.unsqueeze(aimg, 0).contiguous()
+            else:
+                IM = None
+                aimg = torch.unsqueeze(det_img, 0).contiguous()
+            aimg = aimg.to(dtype=torch.float32)
 
-        for i in range(len(output_names)):
-            io_binding.bind_output(output_names[i], 'cuda')
+            io_binding = self.yunet_model.io_binding()
+            io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        # Sync and run model
-        syncvec = self.syncvec.cpu()
-        self.yunet_model.run_with_iobinding(io_binding)
-        net_outs = io_binding.copy_outputs_to_cpu()
+            for i in range(len(output_names)):
+                io_binding.bind_output(output_names[i], 'cuda')
 
-        strides = [8, 16, 32]
-        scores, bboxes, kpss = [], [], []
-        for idx, stride in enumerate(strides):
-            cls_pred = net_outs[idx].reshape(-1, 1)
-            obj_pred = net_outs[idx + len(strides)].reshape(-1, 1)
-            reg_pred = net_outs[idx + len(strides) * 2].reshape(-1, 4)
-            kps_pred = net_outs[idx + len(strides) * 3].reshape(
-                -1, 5 * 2)
+            # Sync and run model
+            syncvec = self.syncvec.cpu()
+            self.yunet_model.run_with_iobinding(io_binding)
+            net_outs = io_binding.copy_outputs_to_cpu()
 
-            anchor_centers = np.stack(
-                np.mgrid[:(input_size[1] // stride), :(input_size[0] //
-                                                       stride)][::-1],
-                axis=-1)
-            anchor_centers = (anchor_centers * stride).astype(
-                np.float32).reshape(-1, 2)
+            strides = [8, 16, 32]
+            for idx, stride in enumerate(strides):
+                cls_pred = net_outs[idx].reshape(-1, 1)
+                obj_pred = net_outs[idx + len(strides)].reshape(-1, 1)
+                reg_pred = net_outs[idx + len(strides) * 2].reshape(-1, 4)
+                kps_pred = net_outs[idx + len(strides) * 3].reshape(
+                    -1, 5 * 2)
 
-            bbox_cxy = reg_pred[:, :2] * stride + anchor_centers[:]
-            bbox_wh = np.exp(reg_pred[:, 2:]) * stride
-            tl_x = (bbox_cxy[:, 0] - bbox_wh[:, 0] / 2.)
-            tl_y = (bbox_cxy[:, 1] - bbox_wh[:, 1] / 2.)
-            br_x = (bbox_cxy[:, 0] + bbox_wh[:, 0] / 2.)
-            br_y = (bbox_cxy[:, 1] + bbox_wh[:, 1] / 2.)
+                anchor_centers = np.stack(
+                    np.mgrid[:(input_size[1] // stride), :(input_size[0] //
+                                                           stride)][::-1],
+                    axis=-1)
+                anchor_centers = (anchor_centers * stride).astype(
+                    np.float32).reshape(-1, 2)
 
-            bboxes.append(np.stack([tl_x, tl_y, br_x, br_y], -1))
-            # for nk in range(5):
-            per_kps = np.concatenate(
-                [((kps_pred[:, [2 * i, 2 * i + 1]] * stride) + anchor_centers)
-                 for i in range(5)],
-                axis=-1)
+                scores = (cls_pred * obj_pred)
+                pos_inds = np.where(scores>=score)[0]
 
-            kpss.append(per_kps)
-            scores.append(cls_pred * obj_pred)
+                bbox_cxy = reg_pred[:, :2] * stride + anchor_centers[:]
+                bbox_wh = np.exp(reg_pred[:, 2:]) * stride
+                tl_x = (bbox_cxy[:, 0] - bbox_wh[:, 0] / 2.)
+                tl_y = (bbox_cxy[:, 1] - bbox_wh[:, 1] / 2.)
+                br_x = (bbox_cxy[:, 0] + bbox_wh[:, 0] / 2.)
+                br_y = (bbox_cxy[:, 1] + bbox_wh[:, 1] / 2.)
 
-        scores = np.concatenate(scores, axis=0).reshape(-1)
-        bboxes = np.concatenate(bboxes, axis=0)
-        kpss = np.concatenate(kpss, axis=0)
-        score_mask = (scores > score)
-        scores = scores[score_mask]
-        bboxes = bboxes[score_mask]
-        kpss = kpss[score_mask]
+                bboxes = np.stack([tl_x, tl_y, br_x, br_y], axis=-1)
 
-        bboxes /= det_scale
-        kpss /= det_scale
-        pre_det = np.hstack((bboxes, scores[:, None]))
+                pos_scores = scores[pos_inds]
+                pos_bboxes = bboxes[pos_inds]
+
+                # bboxes
+                if angle != 0:
+                    if len(pos_bboxes) > 0:
+                        # Split the points into coordinates (x1, y1) and (x2, y2)
+                        points1 = pos_bboxes[:, :2]  # (x1, y1)
+                        points2 = pos_bboxes[:, 2:]  # (x2, y2)
+
+                        # Apply the inverse of the rotation matrix to points1 and points2
+                        points1 = faceutil.trans_points2d(points1, IM)
+                        points2 = faceutil.trans_points2d(points2, IM)
+
+                        _x1 = points1[:, 0]
+                        _y1 = points1[:, 1]
+                        _x2 = points2[:, 0]
+                        _y2 = points2[:, 1]
+
+                        if angle in (-270, 90):
+                            # x1, y2, x2, y1
+                            points1 = np.stack((_x1, _y2), axis=1)
+                            points2 = np.stack((_x2, _y1), axis=1)
+                        elif angle in (-180, 180):
+                            # x2, y2, x1, y1
+                            points1 = np.stack((_x2, _y2), axis=1)
+                            points2 = np.stack((_x1, _y1), axis=1)
+                        elif angle in (-90, 270):
+                            # x2, y1, x1, y2
+                            points1 = np.stack((_x2, _y1), axis=1)
+                            points2 = np.stack((_x1, _y2), axis=1)
+
+                        # Reassemble the transformed points into the format [x1', y1', x2', y2']
+                        pos_bboxes = np.hstack((points1, points2))
+
+                # kpss
+                # for nk in range(5):
+                kpss = np.concatenate(
+                    [((kps_pred[:, [2 * i, 2 * i + 1]] * stride) + anchor_centers)
+                     for i in range(5)],
+                    axis=-1)
+
+                kpss = kpss.reshape( (kpss.shape[0], -1, 2) )
+                pos_kpss = kpss[pos_inds]
+
+                if do_rotation:
+                    for i in range(len(pos_kpss)):
+                        face_size = max(pos_bboxes[i][2] - pos_bboxes[i][0], pos_bboxes[i][3] - pos_bboxes[i][1])
+                        angle_deg_to_front = faceutil.get_face_orientation(face_size, pos_kpss[i])
+                        if angle_deg_to_front < -50.00 or angle_deg_to_front > 50.00:
+                            pos_scores[i] = 0.0
+
+                        if angle != 0:
+                            pos_kpss[i] = faceutil.trans_points2d(pos_kpss[i], IM)
+
+                    pos_inds = np.where(pos_scores>=score)[0]
+                    pos_scores = pos_scores[pos_inds]
+                    pos_bboxes = pos_bboxes[pos_inds]
+                    pos_kpss = pos_kpss[pos_inds]
+
+                kpss_list.append(pos_kpss)
+                bboxes_list.append(pos_bboxes)
+                scores_list.append(pos_scores)
+
+        if len(bboxes_list) == 0:
+            return [], []
+
+        scores = np.vstack(scores_list)
+        scores_ravel = scores.ravel()
+        order = scores_ravel.argsort()[::-1]
+
+        det_scale = det_scale.numpy()###
+
+        bboxes = np.vstack(bboxes_list) / det_scale
+
+        kpss = np.vstack(kpss_list) / det_scale
+        pre_det = np.hstack((bboxes, scores)).astype(np.float32, copy=False)
+        pre_det = pre_det[order, :]
 
         dets = pre_det
         thresh = 0.4
@@ -1534,56 +1904,68 @@ class Models():
         y1 = dets[:, 1]
         x2 = dets[:, 2]
         y2 = dets[:, 3]
-        scoresb = dets[:, -1]
+        scoresb = dets[:, 4]
 
         areas = (x2 - x1 + 1) * (y2 - y1 + 1)
-        order = scoresb.argsort()[::-1]
+        orderb = scoresb.argsort()[::-1]
 
         keep = []
-        while order.size > 0:
-            i = order[0]
+        while orderb.size > 0:
+            i = orderb[0]
             keep.append(i)
-            xx1 = np.maximum(x1[i], x1[order[1:]])
-            yy1 = np.maximum(y1[i], y1[order[1:]])
-            xx2 = np.minimum(x2[i], x2[order[1:]])
-            yy2 = np.minimum(y2[i], y2[order[1:]])
+            xx1 = np.maximum(x1[i], x1[orderb[1:]])
+            yy1 = np.maximum(y1[i], y1[orderb[1:]])
+            xx2 = np.minimum(x2[i], x2[orderb[1:]])
+            yy2 = np.minimum(y2[i], y2[orderb[1:]])
 
             w = np.maximum(0.0, xx2 - xx1 + 1)
             h = np.maximum(0.0, yy2 - yy1 + 1)
+
             inter = w * h
-            ovr = inter / (areas[i] + areas[order[1:]] - inter)
+            ovr = inter / (areas[i] + areas[orderb[1:]] - inter)
 
             inds = np.where(ovr <= thresh)[0]
-            order = order[inds + 1]
+            orderb = orderb[inds + 1]
 
-        kpss = kpss[keep, :]
-        bboxes = pre_det[keep, :]
-        score_values = bboxes[:, 4]
+        det = pre_det[keep, :]
 
-        bbox_list = []
-        kps_list = []
-        for i in range(bboxes.shape[0]):
-            if i==max_num:
-                    break
-            box = np.array((bboxes[i][0], bboxes[i][1], bboxes[i][2], bboxes[i][3]))
-            bbox_list.append(box)
+        kpss = kpss[order,:,:]
+        kpss = kpss[keep,:,:]
 
+        #if max_num > 0 and det.shape[0] > max_num:
+        if max_num > 0 and det.shape[0] > 1:
+            area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
+            #det_img_center = det_img.shape[0] // 2, det_img.shape[1] // 2
+            det_img_center = img_height // 2, img_width // 2
+            offsets = np.vstack([
+                (det[:, 0] + det[:, 2]) / 2 - det_img_center[1],
+                (det[:, 1] + det[:, 3]) / 2 - det_img_center[0]
+            ])
+            offset_dist_squared = np.sum(np.power(offsets, 2.0), 0)
+
+            values = area - offset_dist_squared * 2.0  # some extra weight on the centering
+            bindex = np.argsort(values)[::-1]  # some extra weight on the centering
+            bindex = bindex[0:max_num]
+
+            det = det[bindex, :]
             if kpss is not None:
-                kps = kpss[i].reshape(-1, 2)
-                if use_landmark_detection and len(kps) > 0:
-                    landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, box, kps, landmark_detect_mode, landmark_score, from_points)
-                    if len(landmark_kpss) > 0:
-                        if len(landmark_scores) > 0:
-                            #print(np.mean(landmark_scores))
-                            #print(np.mean(score_values[i]))
-                            if np.mean(landmark_scores) > np.mean(score_values[i]):
-                                kps = landmark_kpss
-                        else:
-                            kps = landmark_kpss
+                kpss = kpss[bindex, :]
 
-                kps_list.append(kps)
+        score_values = det[:, 4]
+        # delete score column
+        det = np.delete(det, 4, 1)
 
-        return np.array(bbox_list), np.array(kps_list)
+        if use_landmark_detection and len(kpss) > 0:
+            for i in range(kpss.shape[0]):
+                landmark_kpss, landmark_scores = self.run_detect_landmark(img_landmark, det[i], kpss[i], landmark_detect_mode, landmark_score, from_points)
+                if len(landmark_kpss) > 0:
+                    if len(landmark_scores) > 0:
+                        if np.mean(landmark_scores) > np.mean(score_values[i]):
+                            kpss[i] = landmark_kpss
+                    else:
+                        kpss[i] = landmark_kpss
+
+        return det, kpss
 
     def detect_face_landmark_5(self, img, bbox, det_kpss, from_points=False):
         if from_points == False:

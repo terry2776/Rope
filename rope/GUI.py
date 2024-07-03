@@ -1008,10 +1008,13 @@ class GUI(tk.Tk):
         self.widget['DetectTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['DetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        
         # Similarity
         row += row_delta
         self.widget['SimilarityTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SimilarityTypeTextSel', 'Similarity Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
+        #
+        # Auto Rotation
+        row += switch_delta
+        self.widget['AutoRotationSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'AutoRotationSwitch', 'Auto Rotation', 3, self.update_data, 'parameter', 398, 20, 1, row)
         #
         # Face Likeness
         row += switch_delta
@@ -1581,7 +1584,11 @@ class GUI(tk.Tk):
 
                         img = img.permute(2,0,1)
                         try:
-                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1, score=0.5, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=0.5, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"]) # Just one face here
+                            if self.parameters["AutoRotationSwitch"]:
+                                rotation_angles = [0, 90, 180, 270]
+                            else:
+                                rotation_angles = [0]
+                            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=1, score=0.5, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=0.5, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"], rotation_angles=rotation_angles) # Just one face here
                             kpss = kpss[0]
                         except IndexError:
                             print('Image cropped too close:', file)
@@ -1617,7 +1624,11 @@ class GUI(tk.Tk):
         try:
             img = torch.from_numpy(self.video_image).to('cuda')
             img = img.permute(2,0,1)
-            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=self.parameters["LandmarksDetectScoreSlider"]/100.0, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"])
+            if self.parameters["AutoRotationSwitch"]:
+                rotation_angles = [0, 90, 180, 270]
+            else:
+                rotation_angles = [0]
+            bboxes, kpss = self.models.run_detect(img, detect_mode=self.parameters["DetectTypeTextSel"], max_num=50, score=self.parameters["DetectScoreSlider"]/100.0, use_landmark_detection=self.parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=self.parameters["LandmarksDetectTypeTextSel"], landmark_score=self.parameters["LandmarksDetectScoreSlider"]/100.0, from_points=self.parameters["LandmarksAlignModeFromPointsSwitch"], rotation_angles=rotation_angles)
 
             ret = []
             for face_kps in kpss:

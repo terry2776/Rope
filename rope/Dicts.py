@@ -198,6 +198,10 @@ DEFAULT_DATA = {
 'FaceLikenessSwitchInfoText':       'Face Likeness:\nThis is an experimental feature to perform direct adjustments to likeness of faces.',
 'FaceLikenessSwitchState':           False,
 #
+# Auto Rotation
+'AutoRotationSwitchInfoText':       'Auto Rotation:\nAutomatically Rotate the frames to find the best detection angle',
+'AutoRotationSwitchState':           False,
+#
 'FaceParserSwitchInfoText':         'BACKGROUND MASK:\nAllow the unprocessed background from the orginal image to show in the final swap.',
 'FaceParserSwitchState':            False,
 'MouthParserSwitchInfoText':        'MOUTH MASK:\nAllow the mouth from the original face to show on the swapped face.',
