@@ -441,7 +441,7 @@ DEFAULT_DATA = {
 'ThreadsSliderAmount':              5,
 'ThreadsSliderInc':                 1,    
 'ThreadsSliderInfoText':            'EXECUTION THREADS:\nSet number of execution threads while playing and recording. Depends strongly on GPU VRAM. 5 threads for 24GB.',
-'ThreadsSliderMax':                 20,
+'ThreadsSliderMax':                 50,
 'ThreadsSliderMin':                 1,
 'ThresholdSliderAmount':            55,
 'ThresholdSliderInc':               1,
@@ -479,6 +479,11 @@ DEFAULT_DATA = {
 'SimilarityTypeTextSelInfoText':    'Similarity version:\nSelect the similarity to be used with arc face recognizer model.',
 'SimilarityTypeTextSelMode':        'Opal',
 'SimilarityTypeTextSelModes':       ['Opal', 'Pearl', 'Optimal'],
+#
+# ProvidersPriority
+'ProvidersPriorityTextSelInfoText':    'Providers Priority:\nSelect the providers priority to be used with the system.',
+'ProvidersPriorityTextSelMode':        'CUDA',
+'ProvidersPriorityTextSelModes':       ['CUDA', 'TensorRT', 'CPU'],
 #
 # Face Swapper Model
 'FaceSwapperModelTextSelInfoText':  'Face Swapper Model:\nSelect the Face Swapper model.',

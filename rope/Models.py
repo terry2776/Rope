@@ -18,9 +18,9 @@ import pickle
 class Models():
     def __init__(self):
         self.arcface_dst = np.array( [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [41.5493, 92.3655], [70.7299, 92.2041]], dtype=np.float32)
-        self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        '''
+        #self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         self.providers = [
+            ('CUDAExecutionProvider'),
             ('TensorrtExecutionProvider', {
                 'trt_engine_cache_enable': True,
                 'trt_engine_cache_path': "tensorrt-engines",
@@ -29,9 +29,7 @@ class Models():
                 'trt_dump_ep_context_model': True,
                 'trt_ep_context_file_path': "tensorrt-engines",
             }),
-            ('CUDAExecutionProvider'),
             ('CPUExecutionProvider')]
-        '''
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
@@ -86,6 +84,50 @@ class Models():
             384, 385, 386, 387, 388, 389, 390, 397, 398, 400, 402, 405, 409, 415, 454,
             466, 468, 469, 470, 471, 472, 473, 474, 475, 476, 477
         ]
+
+    def switch_providers_priority(self, provider_name):
+        match provider_name:
+            case "TensorRT":
+                providers = [
+                                ('TensorrtExecutionProvider', {
+                                    'trt_engine_cache_enable': True,
+                                    'trt_engine_cache_path': "tensorrt-engines",
+                                    'trt_timing_cache_enable': True,
+                                    'trt_timing_cache_path': "tensorrt-engines",
+                                    'trt_dump_ep_context_model': True,
+                                    'trt_ep_context_file_path': "tensorrt-engines",
+                                }),
+                                ('CUDAExecutionProvider'),
+                                ('CPUExecutionProvider')
+                            ]
+            case "CPU":
+                providers = [
+                                ('CPUExecutionProvider'),
+                                ('CUDAExecutionProvider'),
+                                ('TensorrtExecutionProvider', {
+                                    'trt_engine_cache_enable': True,
+                                    'trt_engine_cache_path': "tensorrt-engines",
+                                    'trt_timing_cache_enable': True,
+                                    'trt_timing_cache_path': "tensorrt-engines",
+                                    'trt_dump_ep_context_model': True,
+                                    'trt_ep_context_file_path': "tensorrt-engines",
+                                })
+                            ]
+            case _:
+                providers = [
+                                ('CUDAExecutionProvider'),
+                                ('TensorrtExecutionProvider', {
+                                    'trt_engine_cache_enable': True,
+                                    'trt_engine_cache_path': "tensorrt-engines",
+                                    'trt_timing_cache_enable': True,
+                                    'trt_timing_cache_path': "tensorrt-engines",
+                                    'trt_dump_ep_context_model': True,
+                                    'trt_ep_context_file_path': "tensorrt-engines",
+                                }),
+                                ('CPUExecutionProvider')
+                            ]
+
+        self.providers = providers
 
     def get_gpu_memory(self):
         command = "nvidia-smi --query-gpu=memory.total --format=csv"

@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1460)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1490)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -856,6 +856,10 @@ class GUI(tk.Tk):
         row = 1
         column = 160
 
+        # Providers Priority
+        self.widget['ProvidersPriorityTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'ProvidersPriorityTextSel', 'Providers Priority', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += row_delta
+        #
         # Face Swapper Model
         self.widget['FaceSwapperModelTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'FaceSwapperModelTextSel', 'Face Swapper Model', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
         row += top_border_delta
@@ -1192,6 +1196,9 @@ class GUI(tk.Tk):
                     self.clear_faces()
                     # reload input faces
                     self.load_input_faces()
+            elif name == "ProvidersPriorityTextSel":
+                self.models.switch_providers_priority(self.parameters[name])
+                self.clear_mem()
             #
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
