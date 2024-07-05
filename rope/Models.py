@@ -103,27 +103,11 @@ class Models():
             case "CPU":
                 providers = [
                                 ('CPUExecutionProvider'),
-                                ('CUDAExecutionProvider'),
-                                ('TensorrtExecutionProvider', {
-                                    'trt_engine_cache_enable': True,
-                                    'trt_engine_cache_path': "tensorrt-engines",
-                                    'trt_timing_cache_enable': True,
-                                    'trt_timing_cache_path': "tensorrt-engines",
-                                    'trt_dump_ep_context_model': True,
-                                    'trt_ep_context_file_path': "tensorrt-engines",
-                                })
+                                ('CUDAExecutionProvider')
                             ]
             case _:
                 providers = [
                                 ('CUDAExecutionProvider'),
-                                ('TensorrtExecutionProvider', {
-                                    'trt_engine_cache_enable': True,
-                                    'trt_engine_cache_path': "tensorrt-engines",
-                                    'trt_timing_cache_enable': True,
-                                    'trt_timing_cache_path': "tensorrt-engines",
-                                    'trt_dump_ep_context_model': True,
-                                    'trt_ep_context_file_path': "tensorrt-engines",
-                                }),
                                 ('CPUExecutionProvider')
                             ]
 
