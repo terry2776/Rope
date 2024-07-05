@@ -21,14 +21,6 @@ class Models():
         #self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         self.providers = [
             ('CUDAExecutionProvider'),
-            ('TensorrtExecutionProvider', {
-                'trt_engine_cache_enable': True,
-                'trt_engine_cache_path': "tensorrt-engines",
-                'trt_timing_cache_enable': True,
-                'trt_timing_cache_path': "tensorrt-engines",
-                'trt_dump_ep_context_model': True,
-                'trt_ep_context_file_path': "tensorrt-engines",
-            }),
             ('CPUExecutionProvider')]
         self.retinaface_model = []
         self.yoloface_model = []
