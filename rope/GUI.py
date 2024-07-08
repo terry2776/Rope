@@ -2541,6 +2541,8 @@ class GUI(tk.Tk):
                     self.widget[key].set(value, request_frame=False)
                     if key == "ProvidersPriorityTextSel":
                         self.models.switch_providers_priority(value)
+                        self.models.delete_models()
+                        torch.cuda.empty_cache()
 
             self.add_action('parameters', self.parameters)            
             self.add_action('control', self.control)
