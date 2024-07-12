@@ -896,20 +896,6 @@ class VideoManager():
             # swap = t256(swap)
             # swap = t512(swap)
 
-        
-        # Apply color corerctions
-        if parameters['ColorSwitch']:
-            # print(parameters['ColorGammaSlider'])
-            swap = torch.unsqueeze(swap,0)
-            swap = v2.functional.adjust_gamma(swap, parameters['ColorGammaSlider'], 1.0)
-            swap = torch.squeeze(swap)
-            swap = swap.permute(1, 2, 0).type(torch.float32)
-
-            del_color = torch.tensor([parameters['ColorRedSlider'], parameters['ColorGreenSlider'], parameters['ColorBlueSlider']], device=device)
-            swap += del_color
-            swap = torch.clamp(swap, min=0., max=255.)
-            swap = swap.permute(2, 0, 1).type(torch.uint8)        
-
         # Create border mask
         border_mask = torch.ones((128, 128), dtype=torch.float32, device=device)
         border_mask = torch.unsqueeze(border_mask,0)
@@ -943,7 +929,25 @@ class VideoManager():
         # Restorer
         if parameters["RestorerSwitch"]: 
             swap = self.func_w_test('Restorer', self.apply_restorer, swap, parameters)  
-        
+
+        # Apply color corerctions
+        if parameters['ColorSwitch']:
+            # print(parameters['ColorGammaSlider'])
+            swap = torch.unsqueeze(swap,0)
+            swap = v2.functional.adjust_gamma(swap, parameters['ColorGammaSlider'], 1.0)
+            swap = torch.squeeze(swap)
+            swap = swap.permute(1, 2, 0).type(torch.float32)
+
+            del_color = torch.tensor([parameters['ColorRedSlider'], parameters['ColorGreenSlider'], parameters['ColorBlueSlider']], device=device)
+            swap += del_color                 
+            swap = torch.clamp(swap, min=0., max=255.)
+            swap = swap.permute(2, 0, 1).type(torch.uint8)    
+
+            swap = v2.functional.adjust_brightness(swap, parameters['ColorBrightSlider'])
+            swap = v2.functional.adjust_contrast(swap, parameters['ColorContrastSlider'])
+            swap = v2.functional.adjust_saturation(swap, parameters['ColorSaturationSlider'])
+            swap = v2.functional.adjust_sharpness(swap, parameters['ColorSharpnessSlider'])
+            swap = v2.functional.adjust_hue(swap, parameters['ColorHueSlider'])
             
         # Occluder
         if parameters["OccluderSwitch"]:
@@ -1043,7 +1047,7 @@ class VideoManager():
             img = img.permute(2,0,1)
 
         return img
-        
+
     # @profile    
     def apply_occlusion(self, img, amount):        
         img = torch.div(img, 255)

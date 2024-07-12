@@ -466,6 +466,36 @@ DEFAULT_DATA = {
 'ColorGammaSliderMax':                    2,
 'ColorGammaSliderMin':                    0,
 
+'ColorBrightSliderAmount':                 1,
+'ColorBrightSliderInc':                    0.01,
+'ColorBrightSliderInfoText':               'Bright VALUE:\nChanges Bright.',
+'ColorBrightSliderMax':                    2,
+'ColorBrightSliderMin':                    0,
+
+'ColorContrastSliderAmount':                 1,
+'ColorContrastSliderInc':                    0.01,
+'ColorContrastSliderInfoText':               'Contrast VALUE:\nChanges Contrast.',
+'ColorContrastSliderMax':                    2,
+'ColorContrastSliderMin':                    0,
+
+'ColorSaturationSliderAmount':                 1,
+'ColorSaturationSliderInc':                    0.01,
+'ColorSaturationSliderInfoText':               'Saturation VALUE:\nChanges Saturation.',
+'ColorSaturationSliderMax':                    2,
+'ColorSaturationSliderMin':                    0,
+
+'ColorSharpnessSliderAmount':                 1,
+'ColorSharpnessSliderInc':                    0.1,
+'ColorSharpnessSliderInfoText':               'Sharpness VALUE:\nChanges Sharpness.',
+'ColorSharpnessSliderMax':                    2,
+'ColorSharpnessSliderMin':                    0,
+
+'ColorHueSliderAmount':                 0,
+'ColorHueSliderInc':                    0.01,
+'ColorHueSliderInfoText':               'Hue VALUE:\nChanges Hue.',
+'ColorHueSliderMax':                    0.5,
+'ColorHueSliderMin':                    -0.5,
+
 # Text Selection
 'DetectTypeTextSelInfoText':        'FACE DETECTION MODEL:\nSelect the face detection model. Mostly only subtle differences, but can significant differences when the face is at extreme angles or covered.',
 'DetectTypeTextSelMode':            'Retinaface',
