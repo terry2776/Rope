@@ -88,6 +88,8 @@ class Models():
                                     'trt_timing_cache_path': "tensorrt-engines",
                                     'trt_dump_ep_context_model': True,
                                     'trt_ep_context_file_path': "tensorrt-engines",
+                                    'trt_layer_norm_fp32_fallback': True,
+                                    'trt_builder_optimization_level': 5,
                                 }),
                                 ('CUDAExecutionProvider'),
                                 ('CPUExecutionProvider')
