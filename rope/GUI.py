@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1600)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1650)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -866,6 +866,17 @@ class GUI(tk.Tk):
         self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
         row += bottom_border_delta
         #
+
+        #Webcam Max Resolution
+        self.widget['WebCamMaxResolSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += row_delta
+
+        #Virtual Cam
+        self.widget['VirtualCameraSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'VirtualCameraSwitch', 'Send Frames to Virtual Camera', 3, self.toggle_virtualcam, 'control', 398, 20, 1, row)
+        row += top_border_delta
+        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
+        row += bottom_border_delta
+
         # Restore
         self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, 1, row)
         row += switch_delta
@@ -1212,6 +1223,10 @@ class GUI(tk.Tk):
                 self.models.switch_providers_priority(self.parameters[name])
                 self.models.delete_models()
                 torch.cuda.empty_cache()
+
+            elif name=='WebCamMaxResolSel':
+                # self.add_action(load_target_video()
+                self.add_action('change_webcam_resolution')
             #
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
@@ -1818,13 +1833,29 @@ class GUI(tk.Tk):
         # face['ptrdata'] = self.models.run_swap_stg1(latent)
 
 
-
     def populate_target_videos(self):
+        videos = []
+        #Webcam setup
+        try:
+            for i in range(1):
+                camera_capture = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+                success, webcam_frame = camera_capture.read() 
+                ratio = float(webcam_frame.shape[0]) / webcam_frame.shape[1]
+
+                new_height = 50
+                new_width = int(new_height / ratio)
+                webcam_frame = cv2.resize(webcam_frame, (new_width, new_height))
+                webcam_frame = cv2.cvtColor(webcam_frame, cv2.COLOR_BGR2RGB)
+                webcam_frame[:new_height, :new_width, :] = webcam_frame
+                videos.append([webcam_frame, f'Webcam {i}'])
+                camera_capture.release()
+        except:
+            pass
+
         # Recursively read all media files from directory
         directory =  self.json_dict["source videos"]
         filenames = [os.path.join(dirpath,f) for (dirpath, dirnames, filenames) in os.walk(directory) for f in filenames]
 
-        videos = []
         images = []
         self.target_media = []
         self.target_media_buttons = []
@@ -2126,6 +2157,10 @@ class GUI(tk.Tk):
     def set_player_buttons_to_inactive(self):
         self.widget['TLRecButton'].disable_button()
         self.widget['TLPlayButton'].disable_button()
+
+
+    def set_virtual_cam_toggle_disable(self):
+        self.widget['VirtualCameraSwitch'].toggle_switch(False)
 
 
     def toggle_swapper(self, toggle_value=-1):
@@ -2577,3 +2612,15 @@ class GUI(tk.Tk):
         print(np.dot(vector1, vector2))
 
         return cos_dist
+
+    def toggle_virtualcam(self, mode, name, use_markers=False):
+        self.control[name] =  self.widget[name].get()
+        self.add_action('control', self.control)
+        if self.control[name]:
+            self.add_action('enable_virtualcam')
+        else:
+            self.add_action('disable_virtualcam')
+
+    def disable_record_button(self):
+        self.widget['TLRecButton'].disable_button()
+

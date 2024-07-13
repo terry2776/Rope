@@ -21,13 +21,14 @@ onnxruntime.set_default_logger_severity(4)
 import rope.FaceUtil as faceutil
 
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
-
+import pyvirtualcam
 device = 'cuda'
 
 lock=threading.Lock()
 
 class VideoManager():  
     def __init__(self, models ):
+        self.virtcam = False
         self.models = models
         # Model related
         self.swapper_model = []             # insightface swapper model
@@ -130,17 +131,56 @@ class VideoManager():
     def assign_found_faces(self, found_faces):
         self.found_faces = found_faces
 
+    def enable_virtualcam(self):
+        #Check if capture contains any cv2 stream or is it an empty list
+        if not isinstance(self.capture, (list)):
+            vid_height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            vid_width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.disable_virtualcam()
+            try:
+                self.virtcam = pyvirtualcam.Camera(width=vid_width, height=vid_height, fps=self.fps)
+            except Exception as e:
+                print(e)
+    def disable_virtualcam(self):
+        if self.virtcam:
+            self.virtcam.close()
+        self.virtcam = False
+        # print("Disable hello")
+    def webcam_selected(self, file):
+        return ('Webcam' in file) and len(file)==8
+    
+    def change_webcam_resolution(self):
+        if self.video_file:
+            if self.webcam_selected(self.video_file):
+                if self.play:
+                    self.play_video('stop')
+                    time.sleep(1)
+                self.load_target_video(self.video_file)
+                self.add_action('clear_faces_stop_swap', None)
 
     def load_target_video( self, file ):
         # If we already have a video loaded, release it
         if self.capture:
             self.capture.release()
-            
+        
+        if self.control['VirtualCameraSwitch']:
+            self.add_action("set_virtual_cam_toggle_disable",None)
+            self.disable_virtualcam()
+
         # Open file   
         self.video_file = file
-        self.capture = cv2.VideoCapture(file)
-        self.fps = self.capture.get(cv2.CAP_PROP_FPS)
-        
+        if self.webcam_selected(file):
+            webcam_index = int(file[-1])
+            self.capture = cv2.VideoCapture(webcam_index, cv2.CAP_DSHOW)
+            res_width, res_height = self.parameters['WebCamMaxResolSel'].split('x')
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
+            self.fps = 30
+
+        else:
+            self.capture = cv2.VideoCapture(file)
+            self.fps = self.capture.get(cv2.CAP_PROP_FPS)
+
         if not self.capture.isOpened():
             print("Cannot open file: ", file)
             
@@ -148,7 +188,10 @@ class VideoManager():
             self.target_video = file
             self.is_video_loaded = True
             self.is_image_loaded = False
-            self.video_frame_total = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            if not self.webcam_selected(file):
+                self.video_frame_total = int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            else:
+                self.video_frame_total = 99999999
             self.play = False 
             self.current_frame = 0
             self.frame_timer = time.time()
@@ -428,6 +471,16 @@ class VideoManager():
 
                     # Report fps, other data
                     self.fps_average.append(1.0/time_diff)
+                    avg_fps = self.fps / self.fps_average[-1] if self.fps_average else 10
+
+                    # self.send_to_virtual_camera(temp[0], 15)
+                    if self.control['VirtualCameraSwitch'] and self.virtcam:
+                        # print("virtcam",self.virtcam)
+                        try:
+                            self.virtcam.send(temp[0])
+                            self.virtcam.sleep_until_next_frame()
+                        except Exception as e:
+                            print(e)
                     if len(self.fps_average) >= floor(self.fps):
                         fps = round(np.average(self.fps_average), 2)
                         msg = "%s fps, %s process time" % (fps, round(self.process_qs[index]['ThreadTime'], 4))
@@ -441,68 +494,72 @@ class VideoManager():
                     self.process_qs[index]['FrameNumber'] = []
                     self.process_qs[index]['ThreadTime'] = []
                     self.frame_timer += 1.0/self.fps
-                    
-        elif self.record:
-           
-            index, min_frame = self.find_lowest_frame(self.process_qs)           
+
+        if not self.webcam_selected(self.video_file):           
+            if self.record:
             
-            if index != -1:
-
+                index, min_frame = self.find_lowest_frame(self.process_qs)           
+                
+                if index != -1:
                 # If the swapper thread has finished generating a frame
-                if self.process_qs[index]['Status'] == 'finished':
-                    image = self.process_qs[index]['ProcessedFrame']  
-                    
-                    if self.parameters['RecordTypeTextSel']=='FFMPEG':
-                        pil_image = Image.fromarray(image)
-                        pil_image.save(self.sp.stdin, 'BMP')   
-                    
-                    elif self.parameters['RecordTypeTextSel']=='OPENCV':
-                        self.sp.write(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-
-                    temp = [image, self.process_qs[index]['FrameNumber']]
-                    self.frame_q.append(temp)
-
-                    # Close video and process
-                    if self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker or self.play == False:
-                        self.play_video("stop")
-                        stop_time = float(self.capture.get(cv2.CAP_PROP_POS_FRAMES) / float(self.fps))
-                        if stop_time == 0:
-                            stop_time = float(self.video_frame_total) / float(self.fps)
+                    if self.process_qs[index]['Status'] == 'finished':
+                        image = self.process_qs[index]['ProcessedFrame']  
                         
                         if self.parameters['RecordTypeTextSel']=='FFMPEG':
-                            self.sp.stdin.close()
-                            self.sp.wait()
-                        elif self.parameters['RecordTypeTextSel']=='OPENCV':    
-                            self.sp.release()
 
-                        orig_file = self.target_video
-                        final_file = self.output+self.file_name[1]
-                        print("adding audio...")    
-                        args = ["ffmpeg",
-                                '-hide_banner',
-                                '-loglevel',    'error',
-                                "-i", self.temp_file,
-                                "-ss", str(self.start_time), "-to", str(stop_time), "-i",  orig_file,
-                                "-c",  "copy", # may be c:v
-                                "-map", "0:v:0", "-map", "1:a:0?",
-                                "-shortest",
-                                final_file]
+                            pil_image = Image.fromarray(image)
+                            pil_image.save(self.sp.stdin, 'BMP')   
                         
-                        four = subprocess.run(args)
-                        os.remove(self.temp_file)
+                        elif self.parameters['RecordTypeTextSel']=='OPENCV':
+                            self.sp.write(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
-                        timef= time.time() - self.timer 
-                        self.record = False
-                        print('Video saved as:', final_file)
-                        msg = "Total time: %s s." % (round(timef,1))
-                        print(msg)
+                        temp = [image, self.process_qs[index]['FrameNumber']]
+                        self.frame_q.append(temp)
 
-                        
-                    self.total_thread_time = []
-                    self.process_qs[index]['Status'] = 'clear'
-                    self.process_qs[index]['FrameNumber'] = []
-                    self.process_qs[index]['Thread'] = []
-                    self.frame_timer = time.time()
+                        # Close video and process
+                        if self.process_qs[index]['FrameNumber'] >= self.video_frame_total-1 or self.process_qs[index]['FrameNumber'] == self.stop_marker or self.play == False:
+                            self.play_video("stop")
+                            stop_time = float(self.capture.get(cv2.CAP_PROP_POS_FRAMES) / float(self.fps))
+                            if stop_time == 0:
+                                stop_time = float(self.video_frame_total) / float(self.fps)
+                            
+                            if self.parameters['RecordTypeTextSel']=='FFMPEG':
+                                self.sp.stdin.close()
+                                self.sp.wait()
+                            elif self.parameters['RecordTypeTextSel']=='OPENCV':    
+                                self.sp.release()
+
+                            orig_file = self.target_video
+                            final_file = self.output+self.file_name[1]
+                            print("adding audio...")    
+                            args = ["ffmpeg",
+                                    '-hide_banner',
+                                    '-loglevel',    'error',
+                                    "-i", self.temp_file,
+                                    "-ss", str(self.start_time), "-to", str(stop_time), "-i",  orig_file,
+                                    "-c",  "copy", # may be c:v
+                                    "-map", "0:v:0", "-map", "1:a:0?",
+                                    "-shortest",
+                                    final_file]
+                            
+                            four = subprocess.run(args)
+                            os.remove(self.temp_file)
+
+                            timef= time.time() - self.timer 
+                            self.record = False
+                            print('Video saved as:', final_file)
+                            msg = "Total time: %s s." % (round(timef,1))
+                            print(msg)
+
+                            
+                        self.total_thread_time = []
+                        self.process_qs[index]['Status'] = 'clear'
+                        self.process_qs[index]['FrameNumber'] = []
+                        self.process_qs[index]['Thread'] = []
+                        self.frame_timer = time.time()
+        else:
+            self.record=False  
+            self.add_action('disable_record_button', False)      
     # @profile
     def thread_video_read(self, frame_number):  
         with lock:
@@ -679,7 +736,6 @@ class VideoManager():
                                 except:
                                     print("Key-points value {} exceed the image size {}.".format(kpoint, (img_x, img_y)))
                                     continue
-
         return img.astype(np.uint8)
 
     def findCosineDistance(self, vector1, vector2):
