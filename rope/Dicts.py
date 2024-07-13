@@ -454,6 +454,12 @@ DEFAULT_DATA = {
 'VideoQualSliderMax':               50,
 'VideoQualSliderMin':               0,
 
+'AudioSpeedSliderAmount':           1.00,
+'AudioSpeedSliderInc':              0.01,
+'AudioSpeedSliderInfoText':         'AUDIO PLAYBACK SPEED:\nAudo playback when "Enable Audio" is on',
+'AudioSpeedSliderMax':              2.00,
+'AudioSpeedSliderMin':              0.50,
+
 'CLIPSliderAmount':                 50,
 'CLIPSliderInc':                    1,
 'CLIPSliderInfoText':               'TEXT MASKING STENGTH:\nIncrease to strengthen the effect.',
