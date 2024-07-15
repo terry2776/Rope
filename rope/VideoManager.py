@@ -957,8 +957,8 @@ class VideoManager():
         
         # if parameters['BorderState']:
         top = parameters['BorderTopSlider']
-        left = parameters['BorderSidesSlider']
-        right = 128-parameters['BorderSidesSlider']
+        left = parameters['BorderLeftSlider']
+        right = 128-parameters['BorderRightSlider']
         bottom = 128-parameters['BorderBottomSlider']
 
         border_mask[:, :top, :] = 0

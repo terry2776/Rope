@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1680)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1700)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -914,7 +914,9 @@ class GUI(tk.Tk):
         # Border
         self.widget['BorderTopSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderTopSlider', 'Top Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
-        self.widget['BorderSidesSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderSidesSlider', 'Sides Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        self.widget['BorderLeftSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderLeftSlider', 'Left Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += row_delta
+        self.widget['BorderRightSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderRightSlider', 'Right Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
         self.widget['BorderBottomSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderBottomSlider', 'Bottom Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
         row += row_delta
