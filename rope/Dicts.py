@@ -208,6 +208,8 @@ DEFAULT_DATA = {
 'MouthParserSwitchState':           False,
 'OccluderSwitchInfoText':           'OCCLUSION MASK:\nAllow objects occluding the face to show up in the swapped image.',
 'OccluderSwitchState':              False,
+'DFLXSegSwitchInfoText':            'DFL XSEG MASK:\nAllow objects occluding the face to show up in the swapped image.',
+'DFLXSegSwitchState':               False,
 'OrientSwitchInfoText':             'ORIENTATION:\nRotate the face detector to better detect faces at different angles',
 'OrientSwitchState':                False,
 'RestorerSwitchInfoText':           'FACE RESTORER:\nRestore the swapped image by upscaling.',

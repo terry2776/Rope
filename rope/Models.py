@@ -57,6 +57,7 @@ class Models():
         self.codeformer_model = []
 
         self.occluder_model = []
+        self.model_xseg = []
         self.faceparser_model = []
 
         self.syncvec = torch.empty((1,1), dtype=torch.float32, device='cuda:0')
@@ -256,6 +257,7 @@ class Models():
         self.GPEN_2048_model = []
         self.codeformer_model = []
         self.occluder_model = []
+        self.model_xseg = []
         self.faceparser_model = []
 
     def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper128'):
@@ -547,6 +549,18 @@ class Models():
         # torch.cuda.synchronize('cuda')
         self.syncvec.cpu()
         self.occluder_model.run_with_iobinding(io_binding)
+
+    #def run_dfl_xseg(self, image):
+    def run_dfl_xseg(self, image, output):
+        if not self.model_xseg:
+            self.model_xseg = onnxruntime.InferenceSession("./models/XSeg_model.onnx", providers=self.providers)
+
+        io_binding = self.model_xseg.io_binding()
+        io_binding.bind_input(name='in_face:0', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='out_mask:0', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.model_xseg.run_with_iobinding(io_binding)
 
     def run_faceparser(self, image, output):
         if not self.faceparser_model:

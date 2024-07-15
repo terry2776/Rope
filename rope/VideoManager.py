@@ -1010,6 +1010,10 @@ class VideoManager():
             mask = t128(mask)  
             swap_mask = torch.mul(swap_mask, mask)
 
+        if parameters["DFLXSegSwitch"]:
+            img_mask = self.func_w_test('occluder', self.apply_dfl_xseg , original_face_256)
+            img_mask = t128(img_mask)
+            swap_mask = torch.mul(swap_mask, 1 - img_mask)
 
         if parameters["FaceParserSwitch"]:
             mask = self.apply_face_parser(swap, parameters)
@@ -1138,7 +1142,23 @@ class VideoManager():
             outpred = torch.add(outpred, 1)
             
         outpred = torch.reshape(outpred, (1, 256, 256)) 
-        return outpred         
+        return outpred
+
+    def apply_dfl_xseg(self, img):
+        img = img.type(torch.float32)
+        img = torch.div(img, 255)
+        img = torch.unsqueeze(img, 0).contiguous()
+        outpred = torch.ones((256,256), dtype=torch.float32, device=device).contiguous()
+        
+        self.models.run_dfl_xseg(img, outpred)
+        
+        outpred = torch.clamp(outpred, min=0.0, max=1.0)
+        outpred[outpred < 0.1] = 0
+        # invert values to mask areas to keep
+        outpred = 1.0 - outpred
+        outpred = torch.unsqueeze(outpred, 0).type(torch.float32)
+        
+        return outpred
     
       
     def apply_CLIPs(self, img, CLIPText, CLIPAmount):
