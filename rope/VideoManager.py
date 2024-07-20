@@ -1011,7 +1011,7 @@ class VideoManager():
             swap_mask = torch.mul(swap_mask, mask)
 
         if parameters["DFLXSegSwitch"]:
-            img_mask = self.func_w_test('occluder', self.apply_dfl_xseg , original_face_256)
+            img_mask = self.func_w_test('occluder', self.apply_dfl_xseg , original_face_256, -parameters["DFLXSegSlider"])
             img_mask = t128(img_mask)
             swap_mask = torch.mul(swap_mask, 1 - img_mask)
 
@@ -1144,7 +1144,7 @@ class VideoManager():
         outpred = torch.reshape(outpred, (1, 256, 256)) 
         return outpred
 
-    def apply_dfl_xseg(self, img):
+    def apply_dfl_xseg(self, img, amount):
         img = img.type(torch.float32)
         img = torch.div(img, 255)
         img = torch.unsqueeze(img, 0).contiguous()
@@ -1157,9 +1157,31 @@ class VideoManager():
         # invert values to mask areas to keep
         outpred = 1.0 - outpred
         outpred = torch.unsqueeze(outpred, 0).type(torch.float32)
-        
+
+        if amount > 0:                   
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=device)
+
+            for i in range(int(amount)):
+                outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))       
+                outpred = torch.clamp(outpred, 0, 1)
+            
+            outpred = torch.squeeze(outpred)
+            
+        if amount < 0:      
+            outpred = torch.neg(outpred)
+            outpred = torch.add(outpred, 1)
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=device)
+
+            for i in range(int(-amount)):
+                outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))       
+                outpred = torch.clamp(outpred, 0, 1)
+            
+            outpred = torch.squeeze(outpred)
+            outpred = torch.neg(outpred)
+            outpred = torch.add(outpred, 1)
+            
+        outpred = torch.reshape(outpred, (1, 256, 256)) 
         return outpred
-    
       
     def apply_CLIPs(self, img, CLIPText, CLIPAmount):
         clip_mask = np.ones((352, 352))
