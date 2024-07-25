@@ -22,6 +22,7 @@ import rope.FaceUtil as faceutil
 
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 import pyvirtualcam
+import platform
 device = 'cuda'
 
 lock=threading.Lock()
@@ -149,7 +150,7 @@ class VideoManager():
     def webcam_selected(self, file):
         return ('Webcam' in file) and len(file)==8
 
-    def change_webcam_resolution(self):
+    def change_webcam_resolution_and_fps(self):
         if self.video_file:
             if self.webcam_selected(self.video_file):
                 if self.play:
@@ -171,11 +172,19 @@ class VideoManager():
         self.video_file = file
         if self.webcam_selected(file):
             webcam_index = int(file[-1])
-            self.capture = cv2.VideoCapture(webcam_index, cv2.CAP_DSHOW)
+            # Only use dshow if it is a Physical webcam in Windows
+            if platform.system == 'Windows':
+                try:
+                    self.capture = cv2.VideoCapture(webcam_index, cv2.CAP_DSHOW)
+                except:
+                    self.capture = cv2.VideoCapture(webcam_index)
+            else:
+                self.capture = cv2.VideoCapture(webcam_index)
+
             res_width, res_height = self.parameters['WebCamMaxResolSel'].split('x')
             self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(res_width))
             self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res_height))
-            self.fps = 30
+            self.fps = self.parameters['WebCamMaxFPSSel']
 
         else:
             self.capture = cv2.VideoCapture(file)

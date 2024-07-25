@@ -597,11 +597,17 @@ DEFAULT_DATA = {
 
 'WebCamMaxResolSelInfoText':        "WEBCAM MAX RESOLUTION:\nSelect the maximum resolution to be used by the webcam",
 'WebCamMaxResolSelMode':            '1920x1080',
-'WebCamMaxResolSelModes':           ['384x216', '640x480', '1280x720', '1920x1080'],
+'WebCamMaxResolSelModes':           ['480x360', '640x480', '1280x720', '1920x1080'],
 
-'WebCamMaxNoSelInfoText':        "WEBCAM MAX NUMBER:\nMaximum No of Webcams to be detected",
-'WebCamMaxNoSelMode':            1,
-'WebCamMaxNoSelModes':           [0,1,2,3,4,5],
+'WebCamMaxFPSSelInfoText':        "WEBCAM MAX FPS:\nSelect the maximum FPS of the Webcam",
+'WebCamMaxFPSSelMode':            30,
+'WebCamMaxFPSSelModes':           [23,30,60],
+
+'WebCamMaxNoSliderAmount':                 1,
+'WebCamMaxNoSliderInc':                    1,
+'WebCamMaxNoSliderInfoText':               'WEBCAM MAX COUNT:\nMaximum No of Webcams to be detected.',
+'WebCamMaxNoSliderMax':                    5,
+'WebCamMaxNoSliderMin':                    0,
 
 'MergeTextSelInfoText':      'INPUT FACES MERGE MATH:\nWhen shift-clicking face for merging, determines how the embedding vectors are combined.',
 'MergeTextSelMode':          'Mean',

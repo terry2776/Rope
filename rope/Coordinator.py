@@ -63,8 +63,8 @@ def coordinator():
         elif action[0][0] == "disable_virtualcam":
             vm.disable_virtualcam() 
             action.pop(0)  
-        elif action[0][0] == "change_webcam_resolution":
-            vm.change_webcam_resolution() 
+        elif action[0][0] == "change_webcam_resolution_and_fps":
+            vm.change_webcam_resolution_and_fps()
             action.pop(0) 
         # elif action[0][0] == "swap":
         #     vm.swap = action[0][1]

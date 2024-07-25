@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1950)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1960)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -871,8 +871,12 @@ class GUI(tk.Tk):
         self.widget['WebCamMaxResolSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
 
-        #Webcam Max Resolution
-        self.widget['WebCamMaxNoSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxNoSel', 'Max No of Webcams', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        #Webcam Max FPS
+        self.widget['WebCamMaxFPSSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxFPSSel', 'Webcam FPS', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += row_delta
+
+        #Webcam Max Count
+        self.widget['WebCamMaxNoSlider'] = GE.Slider2(self.layer['parameters_frame'], 'WebCamMaxNoSlider', 'Max Webcams', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
 
         #Virtual Cam
@@ -1259,9 +1263,9 @@ class GUI(tk.Tk):
                 self.models.delete_models()
                 torch.cuda.empty_cache()
 
-            elif name=='WebCamMaxResolSel':
+            elif name=='WebCamMaxResolSel' or name=='WebCamMaxFPSSel':
                 # self.add_action(load_target_video()
-                self.add_action('change_webcam_resolution')
+                self.add_action('change_webcam_resolution_and_fps')
 
             #
         elif mode=='control':
@@ -1873,7 +1877,7 @@ class GUI(tk.Tk):
         videos = []
         #Webcam setup
         try:
-            for i in range(self.parameters['WebCamMaxNoSel']):
+            for i in range(self.parameters['WebCamMaxNoSlider']):
                 camera_capture = cv2.VideoCapture(i, cv2.CAP_DSHOW)
                 success, webcam_frame = camera_capture.read() 
                 ratio = float(webcam_frame.shape[0]) / webcam_frame.shape[1]
@@ -2416,10 +2420,6 @@ class GUI(tk.Tk):
             self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
             self.layer['preview_frame'].grid(row=4, column=0, sticky='NEWS')
             self.layer['markers_canvas'].grid(row=3, column=0, sticky='NEWS')
-
-
-
-
 
         
     def update_marker(self, action):
