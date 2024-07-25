@@ -2579,16 +2579,23 @@ class GUI(tk.Tk):
         self.add_action('get_requested_video_frame', self.video_slider.get())
         
     def parameter_io(self, task):
+        initial_dir = os.getcwd()  # Get the current working directory
+        
         if task=='save':
-            with open("saved_parameters.json", "w") as save_file:
+            save_file = filedialog.asksaveasfile(mode='w', initialdir=initial_dir,  defaultextension=".json", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+            if save_file:
                 json.dump(self.parameters, save_file)
+                save_file.close()
 
         elif task=='load':
             try:
-                load_file = open("saved_parameters.json", "r")
+                load_file = filedialog.askopenfile(mode='r', initialdir=initial_dir, filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
             except FileNotFoundError:
                 print('No save file created yet!')
-            else: 
+            else:
+                if not load_file:
+                    return
+
                 # Load the file and save it to parameters
                 self.parameters = json.load(load_file)
                 load_file.close()
