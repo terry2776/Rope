@@ -222,6 +222,11 @@ DEFAULT_DATA = {
 'VirtualCameraSwitchState':         False,
 'VirtualCameraSwitchInfoText':      'VIRTUAL CAMERA:\nFeed the swapped video output to virtual camera for using in external applications',
 
+'RestoreEyesSwitchInfoText':        'RESTORE EYES: \nRestore eyes from the original face',
+'RestoreEyesSwitchState':           False,
+'RestoreMouthSwitchInfoText':       'RESTORE MOUTH: \nRestore mouth from the original face',
+'RestoreMouthSwitchState':          False,
+
 # Sliders
 'BlendSliderAmount':                5,
 'BlendSliderInc':                   1,  
@@ -428,6 +433,42 @@ DEFAULT_DATA = {
 'LowerLipParserSliderMax':             30,
 'LowerLipParserSliderMin':             0,
 
+'RestoreEyesSliderAmount':               50,
+'RestoreEyesSliderInc':                  1,
+'RestoreEyesSliderInfoText':             'EYES BLEND SLIDER :\nIncrease this to show more of the swapped eyes. Decrease it to show more of the original eyes',
+'RestoreEyesSliderMax':                  100,
+'RestoreEyesSliderMin':                  1,
+
+'RestoreEyesSizeSliderAmount':               3,
+'RestoreEyesSizeSliderInc':                  0.5,
+'RestoreEyesSizeSliderInfoText':             'EYES SIZE FACTOR :\nReduce this when swapping faces zoomed out of the frame.',
+'RestoreEyesSizeSliderMax':                  4,
+'RestoreEyesSizeSliderMin':                  2,
+
+'RestoreEyesFeatherSliderAmount':               10,
+'RestoreEyesFeatherSliderInc':                  1,
+'RestoreEyesFeatherSliderInfoText':             'EYES FEATHER BLEND :\nAdjust the blending of eyes border. Increase this to show more of the original eyes. Decrease this to show more of the swapped eyes',
+'RestoreEyesFeatherSliderMax':                  100,
+'RestoreEyesFeatherSliderMin':                  1,
+
+'RestoreMouthSliderAmount':               50,
+'RestoreMouthSliderInc':                  1,
+'RestoreMouthSliderInfoText':             'MOUTH BLEND :\nIncrease this to show more of the swapped Mouth. Decrease it to show more of the original Mouth',
+'RestoreMouthSliderMax':                  100,
+'RestoreMouthSliderMin':                  1,
+
+'RestoreMouthSizeSliderAmount':               25,
+'RestoreMouthSizeSliderInc':                  5,
+'RestoreMouthSizeSliderInfoText':             'MOUTH SIZE :\nIncrease this when swapping faces zoomed out of the frame.',
+'RestoreMouthSizeSliderMax':                  60,
+'RestoreMouthSizeSliderMin':                  5,
+
+'RestoreMouthFeatherSliderAmount':               10,
+'RestoreMouthFeatherSliderInc':                  1,
+'RestoreMouthFeatherSliderInfoText':             'MOUTH FEATHER BLEND :\nAdjust the border of Mouth blending. Increase this to show more of the original Mouth. Decrease this to show more of the swapped Mouth',
+'RestoreMouthFeatherSliderMax':                  100,
+'RestoreMouthFeatherSliderMin':                  1,
+
 'OccluderSliderAmount':             0,
 'OccluderSliderInc':                1,
 'OccluderSliderInfoText':           'OCCLUDER AMOUNT:\nGrows or shrinks the occluded region',
@@ -556,7 +597,12 @@ DEFAULT_DATA = {
 
 'WebCamMaxResolSelInfoText':        "WEBCAM MAX RESOLUTION:\nSelect the maximum resolution to be used by the webcam",
 'WebCamMaxResolSelMode':            '1920x1080',
-'WebCamMaxResolSelModes':           ['384x216', '640x360', '1280x720', '1920x1080'],
+'WebCamMaxResolSelModes':           ['384x216', '640x480', '1280x720', '1920x1080'],
+
+'WebCamMaxNoSelInfoText':        "WEBCAM MAX NUMBER:\nMaximum No of Webcams to be detected",
+'WebCamMaxNoSelMode':            1,
+'WebCamMaxNoSelModes':           [0,1,2,3,4,5],
+
 'MergeTextSelInfoText':      'INPUT FACES MERGE MATH:\nWhen shift-clicking face for merging, determines how the embedding vectors are combined.',
 'MergeTextSelMode':          'Mean',
 'MergeTextSelModes':         ['Mean', 'Median'],

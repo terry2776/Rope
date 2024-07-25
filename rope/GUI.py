@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1730)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1950)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -869,6 +869,10 @@ class GUI(tk.Tk):
 
         #Webcam Max Resolution
         self.widget['WebCamMaxResolSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += row_delta
+
+        #Webcam Max Resolution
+        self.widget['WebCamMaxNoSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxNoSel', 'Max No of Webcams', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
 
         #Virtual Cam
@@ -948,6 +952,27 @@ class GUI(tk.Tk):
         row += top_border_delta
         self.static_widget['10'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
         row += bottom_border_delta
+
+        #Restore Eyes
+        # row+=switch_delta
+        self.widget['RestoreEyesSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreEyesSwitch', 'Restore Eyes', 3, self.update_data, 'parameter', 398, 20, 1, row)
+        row += switch_delta        
+        self.widget['RestoreEyesSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSlider', 'Eyes Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta        
+        self.widget['RestoreEyesFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesFeatherSlider', 'Eyes Feather Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta        
+        self.widget['RestoreEyesSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSizeSlider', 'Eyes Size Factor', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta     
+
+        #Restore Mouth
+        self.widget['RestoreMouthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreMouthSwitch', 'Restore Mouth', 3, self.update_data, 'parameter', 398, 20, 1, row)
+        row += switch_delta        
+        self.widget['RestoreMouthSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSlider', 'Mouth Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta        
+        self.widget['RestoreMouthFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthFeatherSlider', 'Mouth Feather Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta        
+        self.widget['RestoreMouthSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSizeSlider', 'Mouth Size', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row += switch_delta 
 
         # FaceParser - Face
         self.widget['FaceParserSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceParserSwitch', 'Face Parser', 3, self.update_data, 'parameter', 398, 20, 1, row)
@@ -1237,6 +1262,7 @@ class GUI(tk.Tk):
             elif name=='WebCamMaxResolSel':
                 # self.add_action(load_target_video()
                 self.add_action('change_webcam_resolution')
+
             #
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
@@ -1847,7 +1873,7 @@ class GUI(tk.Tk):
         videos = []
         #Webcam setup
         try:
-            for i in range(1):
+            for i in range(self.parameters['WebCamMaxNoSel']):
                 camera_capture = cv2.VideoCapture(i, cv2.CAP_DSHOW)
                 success, webcam_frame = camera_capture.read() 
                 ratio = float(webcam_frame.shape[0]) / webcam_frame.shape[1]
