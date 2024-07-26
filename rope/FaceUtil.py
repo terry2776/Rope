@@ -46,9 +46,10 @@ arcface_src = np.expand_dims(arcface_src, axis=0)
 def pad_image_by_size(img, image_size):
     w, h = math.ceil(img.size(dim=2)), math.ceil(img.size(dim=1))
     if w < image_size or h < image_size:
+        pad_right = image_size - w
+        pad_bottom = image_size - h
         # add right, bottom pading to the image if its size is less than image_size value
-        add = image_size - min(w, h)
-        img = torch.nn.functional.pad(img, (0, add, 0, add), 'constant', 0)
+        img = torch.nn.functional.pad(img, (0, pad_right, 0, pad_bottom), 'constant', 0)
 
     return img
 
