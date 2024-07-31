@@ -1410,25 +1410,27 @@ class VideoManager():
         
         temp = torch.div(temp, 255)
         temp = v2.functional.normalize(temp, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=False)
+
         if parameters['RestorerTypeTextSel'] == 'GP256':
             temp = t256(temp)
+
         temp = torch.unsqueeze(temp, 0).contiguous()
 
         # Bindings
         outpred = torch.empty((1,3,512,512), dtype=torch.float32, device=device).contiguous()
 
         if parameters['RestorerTypeTextSel'] == 'GFPGAN':
-            self.models.run_GFPGAN(temp, outpred)            
-            
+            self.models.run_GFPGAN(temp, outpred)
+
         elif parameters['RestorerTypeTextSel'] == 'CF':
-            self.models.run_codeformer(temp, outpred) 
+            self.models.run_codeformer(temp, outpred)
             
         elif parameters['RestorerTypeTextSel'] == 'GP256':
             outpred = torch.empty((1,3,256,256), dtype=torch.float32, device=device).contiguous()
-            self.models.run_GPEN_256(temp, outpred) 
+            self.models.run_GPEN_256(temp, outpred)
             
         elif parameters['RestorerTypeTextSel'] == 'GP512':
-            self.models.run_GPEN_512(temp, outpred) 
+            self.models.run_GPEN_512(temp, outpred)
 
         elif parameters['RestorerTypeTextSel'] == 'GP1024':
             temp = t1024(temp)
@@ -1440,14 +1442,20 @@ class VideoManager():
             outpred = torch.empty((1, 3, 2048, 2048), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_2048(temp, outpred)
 
+        elif parameters['RestorerTypeTextSel'] == 'VQFR':
+            self.models.run_VQFR_v2(temp, outpred, parameters['VQFRFidelitySlider'])
+            outpred = outpred[0]
+
         # Format back to cxHxW @ 255
-        outpred = torch.squeeze(outpred)      
+        outpred = torch.squeeze(outpred)
         outpred = torch.clamp(outpred, -1, 1)
         outpred = torch.add(outpred, 1)
         outpred = torch.div(outpred, 2)
         outpred = torch.mul(outpred, 255)
+
         if parameters['RestorerTypeTextSel'] == 'GP256' or parameters['RestorerTypeTextSel'] == 'GP1024' or parameters['RestorerTypeTextSel'] == 'GP2048':
             outpred = t512(outpred)
+
         # Invert Transform
         if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
             outpred = v2.functional.affine(outpred, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )

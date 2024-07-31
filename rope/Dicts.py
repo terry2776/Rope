@@ -516,6 +516,12 @@ DEFAULT_DATA = {
 'AudioSpeedSliderMax':              2.00,
 'AudioSpeedSliderMin':              0.50,
 
+'VQFRFidelitySliderAmount':         0.0,
+'VQFRFidelitySliderInc':            0.1,
+'VQFRFidelitySliderInfoText':       'VQFR Fidelity Ratio:\nFidelity ratio value for VQFR restorer.',
+'VQFRFidelitySliderMax':            1.0,
+'VQFRFidelitySliderMin':            0.0,
+
 'CLIPSliderAmount':                 50,
 'CLIPSliderInc':                    1,
 'CLIPSliderInfoText':               'TEXT MASKING STENGTH:\nIncrease to strengthen the effect.',
@@ -593,7 +599,7 @@ DEFAULT_DATA = {
 'RestorerDetTypeTextSelModes':      ['Original', 'Blend', 'Reference'],  
 'RestorerTypeTextSelInfoText':      'RESTORER TYPE:\nSelect the Restorer type.\nSpeed: GPEN256>GFPGAN>CF>GPEN512>GPEN1024>GPEN2028',
 'RestorerTypeTextSelMode':          'GFPGAN',
-'RestorerTypeTextSelModes':         ['GFPGAN', 'CF', 'GP256', 'GP512', 'GP1024', 'GP2048'],
+'RestorerTypeTextSelModes':         ['GFPGAN', 'CF', 'GP256', 'GP512', 'GP1024', 'GP2048', 'VQFR'],
 
 'WebCamMaxResolSelInfoText':        "WEBCAM MAX RESOLUTION:\nSelect the maximum resolution to be used by the webcam",
 'WebCamMaxResolSelMode':            '1920x1080',

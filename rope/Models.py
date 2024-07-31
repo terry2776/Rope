@@ -55,6 +55,7 @@ class Models():
         self.GPEN_1024_model = []
         self.GPEN_2048_model = []
         self.codeformer_model = []
+        self.VQFR_v2_model = []
 
         self.occluder_model = []
         self.model_xseg = []
@@ -256,6 +257,7 @@ class Models():
         self.GPEN_1024_model = []
         self.GPEN_2048_model = []
         self.codeformer_model = []
+        self.VQFR_v2_model = []
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
@@ -538,6 +540,24 @@ class Models():
         self.syncvec.cpu()
         self.codeformer_model.run_with_iobinding(io_binding)
 
+    def run_VQFR_v2(self, image, output, fidelity_ratio_value):
+        if not self.VQFR_v2_model:
+            self.VQFR_v2_model = onnxruntime.InferenceSession( "./models/VQFRv2.fp16.onnx", providers=self.providers)
+
+        assert fidelity_ratio_value >= 0.0 and fidelity_ratio_value <= 1.0, 'fidelity_ratio must in range[0,1]'
+        fidelity_ratio = torch.tensor(fidelity_ratio_value).to('cuda')
+
+        io_binding = self.VQFR_v2_model.io_binding()
+        io_binding.bind_input(name='x_lq', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='fidelity_ratio', device_type='cuda', device_id=0, element_type=np.float32, shape=fidelity_ratio.size(), buffer_ptr=fidelity_ratio.data_ptr())
+        io_binding.bind_output('enc_feat', 'cuda')
+        io_binding.bind_output('quant_logit', 'cuda')
+        io_binding.bind_output('texture_dec', 'cuda')
+        io_binding.bind_output(name='main_dec', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.VQFR_v2_model.run_with_iobinding(io_binding)
+        
     def run_occluder(self, image, output):
         if not self.occluder_model:
             self.occluder_model = onnxruntime.InferenceSession("./models/occluder.onnx", providers=self.providers)

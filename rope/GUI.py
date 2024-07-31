@@ -835,7 +835,7 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1960)
+        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=1980)
         self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
 
         self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
@@ -888,9 +888,11 @@ class GUI(tk.Tk):
         # Restore
         self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, 1, row)
         row += switch_delta
-        self.widget['RestorerTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        self.widget['RestorerTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.84)
         row += row_delta
         self.widget['RestorerDetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerDetTypeTextSel', 'Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
+        row += row_delta
+        self.widget['VQFRFidelitySlider'] = GE.Slider2(self.layer['parameters_frame'], 'VQFRFidelitySlider', 'Fidelity Ratio', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
         row += row_delta
         self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
         row += top_border_delta
