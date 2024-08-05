@@ -4,6 +4,7 @@ from PIL import Image, ImageTk
 
 from  rope.Dicts import DEFAULT_DATA
 import rope.Styles as style
+import customtkinter as ctk
 
 #import inspect print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 
@@ -174,10 +175,11 @@ class Scrollbar_y():
         pass   
 
 class Timeline():
-    def __init__(self, parent, widget, temp_toggle_swapper, add_action):  
+    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action):  
         self.parent = parent
         self.add_action = add_action
         self.temp_toggle_swapper = temp_toggle_swapper
+        self.temp_toggle_enhancer = temp_toggle_enhancer
 
         self.frame_length = 0 
         self.height = 20
@@ -600,6 +602,78 @@ class TextSelection():
     def load_default(self):
         self.set(self.default_data[self.name+'Mode'])           
  
+
+class TextSelectionComboBox:
+    def __init__(self, parent, name, display_text, style_level, function, argument, data_type, width, height, x, y, text_percent, combobox_width):
+        self.blank = tk.PhotoImage()
+
+        self.default_data = DEFAULT_DATA
+        self.parent = parent
+        self.name = name
+        self.function = function
+        self.argument = argument
+        self.data_type = data_type
+        self.width = width
+        self.height = height
+        self.style = []
+        self.info = []
+        self.display_text = display_text + ' '
+        self.selection = self.default_data[self.name + 'Mode']
+        
+        self.styles = {
+            3: (style.canvas_frame_label_3, style.text_3, style.text_selection_off_3, style.text_selection_on_3),
+            2: (style.canvas_frame_label_2, style.text_2, style.text_selection_off_2, style.text_selection_on_2)
+        }
+
+        self.frame_style, self.text_style, self.sel_off_style, self.sel_on_style = self.styles.get(style_level)
+        
+        self.ts_frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.ts_frame.place(x=x, y=y)
+        self.ts_frame.bind("<Enter>", lambda event: self.on_enter())
+
+        self.text_width = int(width * (1.0 - text_percent))
+        self.combobox_width = combobox_width
+
+        self.text_label = tk.Label(self.ts_frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
+        self.text_label.place(x=0, y=0)
+        
+        modes = self.default_data[self.name + 'Modes']
+        
+        self.font = ctk.CTkFont(family="Segoe UI", size=10, weight="normal")
+        self.combo_box = ctk.CTkComboBox(self.ts_frame, values=modes, command=self.select_ui_text_selection, font=self.font, dropdown_font=self.font, state="readonly", width=self.combobox_width, height=height, border_width=1, fg_color=style.main, dropdown_fg_color=style.main)
+        self.combo_box.place(x=self.text_width + 10, y=0)
+        self.combo_box.set(self.selection)
+        
+    def select_ui_text_selection(self, selection):
+        self.selection = selection
+        self.function(self.argument, self.name)
+
+    def add_info_frame(self, info):
+        self.info = info
+
+    def on_enter(self):
+        if self.info:
+            self.info.configure(text=self.default_data[self.name + 'InfoText'])
+
+    def get(self):
+        return self.selection
+
+    def set(self, value, request_frame=True):
+        self.combo_box.set(value)
+        if request_frame:
+            self.function(self.argument, self.name)
+
+    def hide(self):
+        self.ts_frame.place_forget()
+
+    def unhide(self):
+        self.ts_frame.place(x=self.ts_frame.winfo_x(), y=self.ts_frame.winfo_y())
+
+    def get_data_type(self):
+        return self.data_type
+
+    def load_default(self):
+        self.set(self.default_data[self.name + 'Mode'])
 
 class Switch2():
     def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, toggle_x=0, toggle_width=40):
