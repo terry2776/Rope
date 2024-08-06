@@ -14,6 +14,7 @@ onnxruntime.set_default_logger_severity(4)
 onnxruntime.log_verbosity_level = -1
 import rope.FaceUtil as faceutil
 import pickle
+import math
 
 class Models():
     def __init__(self):
@@ -56,6 +57,16 @@ class Models():
         self.GPEN_2048_model = []
         self.codeformer_model = []
         self.VQFR_v2_model = []
+        self.RestoreFormerPlusPlus_model = []
+        self.realesrganx2plus_model = []
+        self.realesrganx4plus_model = []
+        self.ultrasharpx4_model = []
+        self.ultramixx4_model = []
+        self.bsrganx2_model = []
+        self.bsrganx4_model = []
+        self.deoldify_art_model = []
+        self.deoldify_stable_model = []
+        self.deoldify_video_model = []
 
         self.occluder_model = []
         self.model_xseg = []
@@ -258,6 +269,16 @@ class Models():
         self.GPEN_2048_model = []
         self.codeformer_model = []
         self.VQFR_v2_model = []
+        self.RestoreFormerPlusPlus_model = []
+        self.realesrganx2plus_model = []
+        self.realesrganx4plus_model = []
+        self.ultramixx4_model = []
+        self.ultrasharpx4_model = []
+        self.bsrganx2_model = []
+        self.bsrganx4_model = []
+        self.deoldify_art_model = []
+        self.deoldify_stable_model = []
+        self.deoldify_video_model = []
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
@@ -274,7 +295,7 @@ class Models():
 
             embedding, cropped_image = self.recognize(self.recognition_simswap_model, img, kps, similarity_type=similarity_type)
 
-        elif face_swapper_model == 'GF1' or face_swapper_model == 'GF2' or face_swapper_model == 'GF3':
+        elif face_swapper_model == 'GhostFace-v1' or face_swapper_model == 'GhostFace-v2' or face_swapper_model == 'GhostFace-v3':
             if not self.recognition_ghost_model:
                 self.recognition_ghost_model = onnxruntime.InferenceSession('./models/ghost_arcface_backbone.onnx', providers=self.providers)
 
@@ -334,22 +355,22 @@ class Models():
 
         return latent
 
-    def run_swapper_ghostface(self, image, embedding, output, swapper_model='GF2'):
-        if swapper_model == 'GF1':
+    def run_swapper_ghostface(self, image, embedding, output, swapper_model='GhostFace-v2'):
+        if swapper_model == 'GhostFace-v1':
             if not self.ghostfacev1swap_model:
                 self.ghostfacev1swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_1_block.onnx", providers=self.providers)
 
             ghostfaceswap_model = self.ghostfacev1swap_model
             output_name = '781'
             #output_name2 = 'onnx::ConvTranspose_239'
-        elif swapper_model == 'GF2':
+        elif swapper_model == 'GhostFace-v2':
             if not self.ghostfacev2swap_model:
                 self.ghostfacev2swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_2_block.onnx", providers=self.providers)
 
             ghostfaceswap_model = self.ghostfacev2swap_model
             output_name = '1165'
             #output_name2 = 'onnx::ConvTranspose_327'
-        elif swapper_model == 'GF3':
+        elif swapper_model == 'GhostFace-v3':
             if not self.ghostfacev3swap_model:
                 self.ghostfacev3swap_model = onnxruntime.InferenceSession( "./models/ghost_unet_3_block.onnx", providers=self.providers)
 
@@ -527,13 +548,13 @@ class Models():
         self.syncvec.cpu()
         self.GPEN_256_model.run_with_iobinding(io_binding)
 
-    def run_codeformer(self, image, output):
+    def run_codeformer(self, image, output, fidelity_weight_value=0.9):
         if not self.codeformer_model:
             self.codeformer_model = onnxruntime.InferenceSession( "./models/codeformer_fp16.onnx", providers=self.providers)
 
         io_binding = self.codeformer_model.io_binding()
         io_binding.bind_input(name='x', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        w = np.array([0.9], dtype=np.double)
+        w = np.array([fidelity_weight_value], dtype=np.double)
         io_binding.bind_cpu_input('w', w)
         io_binding.bind_output(name='y', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
@@ -557,7 +578,197 @@ class Models():
 
         self.syncvec.cpu()
         self.VQFR_v2_model.run_with_iobinding(io_binding)
+
+    def run_RestoreFormerPlusPlus(self, image, output):
+        if not self.RestoreFormerPlusPlus_model:
+            self.RestoreFormerPlusPlus_model = onnxruntime.InferenceSession( "./models/RestoreFormerPlusPlus.fp16.onnx", providers=self.providers)
+
+        io_binding = self.RestoreFormerPlusPlus_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='2359', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_output('1228', 'cuda')
+        io_binding.bind_output('1238', 'cuda')
+        io_binding.bind_output('onnx::MatMul_1198', 'cuda')
+        io_binding.bind_output('onnx::Shape_1184', 'cuda')
+        io_binding.bind_output('onnx::ArgMin_1182', 'cuda')
+        io_binding.bind_output('input.1', 'cuda')
+        io_binding.bind_output('x', 'cuda')
+        io_binding.bind_output('x.3', 'cuda')
+        io_binding.bind_output('x.7', 'cuda')
+        io_binding.bind_output('x.11', 'cuda')
+        io_binding.bind_output('x.15', 'cuda')
+        io_binding.bind_output('input.252', 'cuda')
+        io_binding.bind_output('input.280', 'cuda')
+        io_binding.bind_output('input.288', 'cuda')
+
+        self.syncvec.cpu()
+        self.RestoreFormerPlusPlus_model.run_with_iobinding(io_binding)
+
+    def run_enhance_frame_tile_process(self, img, enhancer_type, tile_size=256, scale=1):
+        _, _, height, width = img.shape
         
+        tiles_x = math.ceil(width / tile_size)
+        tiles_y = math.ceil(height / tile_size)
+        
+        pad_right = (tile_size - (width % tile_size)) % tile_size
+        pad_bottom = (tile_size - (height % tile_size)) % tile_size
+
+        if pad_right != 0 or pad_bottom != 0:
+            img = torch.nn.functional.pad(img, (0, pad_right, 0, pad_bottom), 'constant', 0)
+
+        b, c, h, w = img.shape
+        output_shape = (b, c, h * scale, w * scale)
+        output = torch.empty((output_shape), dtype=torch.float32, device='cuda').contiguous()
+
+        match enhancer_type:
+            case 'RealEsrgan-x2-Plus':
+                fn_upscaler = self.run_realesrganx2
+            case 'RealEsrgan-x4-Plus':
+                fn_upscaler = self.run_realesrganx4
+            case 'BSRGan-x2':
+                fn_upscaler = self.run_bsrganx2
+            case 'BSRGan-x4':
+                fn_upscaler = self.run_bsrganx4
+            case 'UltraSharp-x4':
+                fn_upscaler = self.run_ultrasharpx4
+            case 'UltraMix-x4':
+                fn_upscaler = self.run_ultramixx4
+            case _:
+                if pad_right != 0 or pad_bottom != 0:
+                    img = v2.functional.crop(img, 0,0, height, width)
+
+                return img
+
+        for j in range(tiles_y):
+            for i in range(tiles_x):
+                x_start = i * tile_size
+                y_start = j * tile_size
+                x_end = x_start + tile_size
+                y_end = y_start + tile_size
+                
+                input_tile = img[:, :, y_start:y_end, x_start:x_end].contiguous()
+                output_tile = torch.empty((input_tile.shape[0], input_tile.shape[1], input_tile.shape[2] * scale, input_tile.shape[3] * scale), dtype=torch.float32, device='cuda').contiguous()
+                
+                # upscale tile
+                fn_upscaler(input_tile, output_tile)
+                
+                output_y_start = y_start * scale
+                output_x_start = x_start * scale
+                output_y_end = output_y_start + output_tile.shape[2]
+                output_x_end = output_x_start + output_tile.shape[3]
+
+                output[:, :, output_y_start:output_y_end, output_x_start:output_x_end] = output_tile
+                
+        if pad_right != 0 or pad_bottom != 0:
+            output = v2.functional.crop(output, 0,0, height * scale, width * scale)
+
+        '''
+        if scale != 1 and to_original_size == True:
+            t_resize = v2.Resize((height, width), interpolation=v2.InterpolationMode.BILINEAR, antialias=True)
+            output = t_resize(output)
+        '''
+
+        return output
+
+    def run_realesrganx2(self, image, output):
+        if not self.realesrganx2plus_model:
+            self.realesrganx2plus_model = onnxruntime.InferenceSession( "./models/RealESRGAN_x2plus.fp16.onnx", providers=self.providers)
+
+        io_binding = self.realesrganx2plus_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        
+        self.syncvec.cpu()
+        self.realesrganx2plus_model.run_with_iobinding(io_binding)
+        
+    def run_bsrganx2(self, image, output):
+        if not self.bsrganx2_model:
+            self.bsrganx2_model = onnxruntime.InferenceSession( "./models/BSRGANx2.fp16.onnx", providers=self.providers)
+
+        io_binding = self.bsrganx2_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        
+        self.syncvec.cpu()
+        self.bsrganx2_model.run_with_iobinding(io_binding)
+
+    def run_realesrganx4(self, image, output):
+        if not self.realesrganx4plus_model:
+            self.realesrganx4plus_model = onnxruntime.InferenceSession( "./models/RealESRGAN_x4plus.fp16.onnx", providers=self.providers)
+
+        io_binding = self.realesrganx4plus_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.realesrganx4plus_model.run_with_iobinding(io_binding)
+
+    def run_bsrganx4(self, image, output):
+        if not self.bsrganx4_model:
+            self.bsrganx4_model = onnxruntime.InferenceSession( "./models/BSRGANx4.fp16.onnx", providers=self.providers)
+
+        io_binding = self.bsrganx4_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        
+        self.syncvec.cpu()
+        self.bsrganx4_model.run_with_iobinding(io_binding)
+
+    def run_ultrasharpx4(self, image, output):
+        if not self.ultrasharpx4_model:
+            self.ultrasharpx4_model = onnxruntime.InferenceSession( "./models/4x-UltraSharp.fp16.onnx", providers=self.providers)
+
+        io_binding = self.ultrasharpx4_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.ultrasharpx4_model.run_with_iobinding(io_binding)
+
+    def run_ultramixx4(self, image, output):
+        if not self.ultramixx4_model:
+            self.ultramixx4_model = onnxruntime.InferenceSession( "./models/4x-UltraMix_Smooth.fp16.onnx", providers=self.providers)
+
+        io_binding = self.ultramixx4_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.ultramixx4_model.run_with_iobinding(io_binding)
+
+    def run_deoldify_artistic(self, image, output):
+        if not self.deoldify_art_model:
+            self.deoldify_art_model = onnxruntime.InferenceSession( "./models/ColorizeArtistic.fp16.onnx", providers=self.providers)
+
+        io_binding = self.deoldify_art_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.deoldify_art_model.run_with_iobinding(io_binding)
+
+    def run_deoldify_stable(self, image, output):
+        if not self.deoldify_stable_model:
+            self.deoldify_stable_model = onnxruntime.InferenceSession( "./models/ColorizeStable.fp16.onnx", providers=self.providers)
+
+        io_binding = self.deoldify_stable_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.deoldify_stable_model.run_with_iobinding(io_binding)
+
+    def run_deoldify_video(self, image, output):
+        if not self.deoldify_video_model:
+            self.deoldify_video_model = onnxruntime.InferenceSession( "./models/ColorizeVideo.fp16.onnx", providers=self.providers)
+
+        io_binding = self.deoldify_video_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.deoldify_video_model.run_with_iobinding(io_binding)
+
     def run_occluder(self, image, output):
         if not self.occluder_model:
             self.occluder_model = onnxruntime.InferenceSession("./models/occluder.onnx", providers=self.providers)
@@ -570,7 +781,6 @@ class Models():
         self.syncvec.cpu()
         self.occluder_model.run_with_iobinding(io_binding)
 
-    #def run_dfl_xseg(self, image):
     def run_dfl_xseg(self, image, output):
         if not self.model_xseg:
             self.model_xseg = onnxruntime.InferenceSession("./models/XSeg_model.onnx", providers=self.providers)

@@ -128,6 +128,10 @@ def coordinator():
             gui.toggle_swapper(0)
             action.pop(0)
 
+        elif action[0][0] == "clear_stop_enhance":
+            gui.toggle_enhancer(0)
+            action.pop(0)
+
         elif action[0][0] == "set_slider_length":
             gui.set_video_slider_length(action[0][1])
             action.pop(0)
