@@ -640,21 +640,27 @@ class VideoManager():
                 else:
                     scale = 4
 
-                img = img.type(torch.float32)
-                if torch.max(img) > 256:  # 16-bit image
+                image = img.type(torch.float32)
+                if torch.max(image) > 256:  # 16-bit image
                     max_range = 65535
                 else:
                     max_range = 255
 
-                img = torch.div(img, max_range)
-                img = torch.unsqueeze(img, 0).contiguous()
+                image = torch.div(image, max_range)
+                image = torch.unsqueeze(image, 0).contiguous()
 
-                img = self.models.run_enhance_frame_tile_process(img, enhancer_type, tile_size=tile_size, scale=scale)
+                image = self.models.run_enhance_frame_tile_process(image, enhancer_type, tile_size=tile_size, scale=scale)
 
-                img = torch.squeeze(img)
-                img = torch.clamp(img, 0, 1)
-                img = torch.mul(img, max_range)
+                image = torch.squeeze(image)
+                image = torch.clamp(image, 0, 1)
+                image = torch.mul(image, max_range)
 
+                # Blend
+                alpha = float(parameters["EnhancerSlider"])/100.0
+
+                t_scale = v2.Resize((img.shape[1] * scale, img.shape[2] * scale), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)
+                img = t_scale(img)
+                img = torch.add(torch.mul(image, alpha), torch.mul(img, 1-alpha))
                 if max_range == 255:
                     img = img.type(torch.uint8)
                 else:
@@ -689,7 +695,13 @@ class VideoManager():
                 hires = faceutil.rgb_to_yuv(img)
 
                 hires[1:3, :, :] = output[1:3, :, :]
-                img = faceutil.yuv_to_rgb(hires).type(torch.uint8)
+                hires = faceutil.yuv_to_rgb(hires)
+                
+                # Blend
+                alpha = float(parameters["EnhancerSlider"])/100.0  
+                img = torch.add(torch.mul(hires, alpha), torch.mul(img, 1-alpha))
+
+                img = img.type(torch.uint8)
 
         return img
     
