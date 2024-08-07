@@ -907,7 +907,7 @@ class GUI(tk.Tk):
         row += bottom_border_delta
 
         # Frame Restorer
-        self.widget['FrameEhnancerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FrameEhnancerTypeTextSel', 'Enhancer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
+        self.widget['FrameEnhancerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FrameEnhancerTypeTextSel', 'Enhancer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
         row += top_border_delta
         self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
         row += bottom_border_delta

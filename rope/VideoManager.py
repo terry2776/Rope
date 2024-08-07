@@ -629,7 +629,7 @@ class VideoManager():
         return img
 
     def enhance_core(self, img, parameters):
-        enhancer_type = parameters['FrameEhnancerTypeTextSel']
+        enhancer_type = parameters['FrameEnhancerTypeTextSel']
     
         match enhancer_type:
             case 'RealEsrgan-x2-Plus' | 'RealEsrgan-x4-Plus' | 'BSRGan-x2' | 'BSRGan-x4' | 'UltraSharp-x4' | 'UltraMix-x4':
