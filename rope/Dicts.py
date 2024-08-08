@@ -613,7 +613,7 @@ DEFAULT_DATA = {
 # Frame Enhancer
 'FrameEnhancerTypeTextSelInfoText': 'FRAME ENHANCER TYPE:\nSelect the Restorer type.\nSpeed: DeOldify Artistic>DeOldify Stable>DeOldify Video>RealEsrgan x2 plus>BSRGan x2>UltraMix x4>UltraSharp x4>RealEsrgan x4 plus>BSRGan x4',
 'FrameEnhancerTypeTextSelMode':     'RealEsrgan-x2-Plus',
-'FrameEnhancerTypeTextSelModes':    ['RealEsrgan-x2-Plus', 'RealEsrgan-x4-Plus', 'BSRGan-x2', 'BSRGan-x4', 'UltraSharp-x4', 'UltraMix-x4', 'DeOldify-Artistic', 'DeOldify-Stable', 'DeOldify-Video'],
+'FrameEnhancerTypeTextSelModes':    ['RealEsrgan-x2-Plus', 'RealEsrgan-x4-Plus', 'BSRGan-x2', 'BSRGan-x4', 'UltraSharp-x4', 'UltraMix-x4', 'DDColor-Artistic', 'DDColor', 'DeOldify-Artistic', 'DeOldify-Stable', 'DeOldify-Video'],
 #
 
 'WebCamMaxResolSelInfoText':        "WEBCAM MAX RESOLUTION:\nSelect the maximum resolution to be used by the webcam",

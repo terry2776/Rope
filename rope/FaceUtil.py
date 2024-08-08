@@ -625,7 +625,7 @@ def get_face_orientation(face_size, lmk):
     return angle_deg_to_front
 
 
-def rgb_to_yuv(image):
+def rgb_to_yuv(image, normalize=False):
     """
     Convert an RGB image to YUV.
     Args:
@@ -633,8 +633,9 @@ def rgb_to_yuv(image):
     Returns:
         torch.Tensor: The image tensor in YUV format (C, H, W).
     """
-    # Ensure the image is in the range [0, 1]
-    image = torch.div(image, 255.0)
+    if normalize:
+        # Ensure the image is in the range [0, 1]
+        image = torch.div(image, 255.0)
 
     # Define the conversion matrix from RGB to YUV
     conversion_matrix = torch.tensor([[0.299, 0.587, 0.114],
@@ -646,7 +647,7 @@ def rgb_to_yuv(image):
     
     return yuv_image
 
-def yuv_to_rgb(image):
+def yuv_to_rgb(image, normalize=False):
     """
     Convert a YUV image to RGB.
     Args:
@@ -665,4 +666,98 @@ def yuv_to_rgb(image):
     # Ensure the image is in the range [0, 1]
     rgb_image = torch.clamp(rgb_image, 0, 1)
     
-    return torch.mul(rgb_image, 255.0)
+    if normalize:
+        rgb_image = torch.mul(rgb_image, 255.0)
+        
+    return rgb_image
+
+def rgb_to_lab(rgb, normalize=False):
+    if normalize:
+        # Normalizzazione RGB a [0, 1]
+        rgb = torch.div(rgb.type(torch.float32), 255.0)
+
+    # Linearizzazione dei valori RGB
+    mask = rgb > 0.04045
+    rgb[mask] = torch.pow((rgb[mask] + 0.055) / 1.055, 2.4)
+    rgb[~mask] = rgb[~mask] / 12.92
+
+    # Conversione da RGB a XYZ
+    matrix_rgb_to_xyz = torch.tensor([
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041]
+    ], dtype=rgb.dtype, device=rgb.device)
+    
+    rgb = rgb.permute(1, 2, 0).contiguous()
+    xyz = torch.matmul(rgb.view(-1, 3), matrix_rgb_to_xyz.T).view(rgb.shape)
+
+    # Normalizzazione XYZ
+    white_point = torch.tensor([0.95047, 1.00000, 1.08883], dtype=xyz.dtype, device=xyz.device)
+    xyz = xyz / white_point
+
+    # Conversione da XYZ a LAB
+    epsilon = 0.008856
+    kappa = 903.3
+
+    mask = xyz > epsilon
+    xyz[mask] = torch.pow(xyz[mask], 1/3)
+    xyz[~mask] = (kappa * xyz[~mask] + 16) / 116
+
+    L = 116 * xyz[:, :, 1] - 16
+    a = 500 * (xyz[:, :, 0] - xyz[:, :, 1])
+    b = 200 * (xyz[:, :, 1] - xyz[:, :, 2])
+
+    lab = torch.stack([L, a, b], dim=2).permute(2, 0, 1)
+    return lab
+
+def lab_to_rgb(lab, normalize=False):
+    if lab.dim() != 3 or lab.shape[0] != 3:
+        raise ValueError("LAB tensor must have shape (3, H, W)")
+
+    L = lab[0, :, :]
+    A = lab[1, :, :]
+    B = lab[2, :, :]
+
+    # Conversione da LAB a XYZ
+    epsilon = 0.008856
+    kappa = 903.3
+
+    fy = (L + 16.0) / 116.0
+    fx = A / 500.0 + fy
+    fz = fy - B / 200.0
+
+    fx3 = fx ** 3
+    fz3 = fz ** 3
+    x = torch.where(fx3 > epsilon, fx3, (116.0 * fx - 16.0) / kappa)
+    y = torch.where(L > (kappa * epsilon), ((L + 16.0) / 116.0) ** 3, L / kappa)
+    z = torch.where(fz3 > epsilon, fz3, (116.0 * fz - 16.0) / kappa)
+
+    # White point normalization
+    white_point = torch.tensor([0.95047, 1.00000, 1.08883], dtype=lab.dtype, device=lab.device)
+    xyz = torch.stack([x, y, z], dim=0) * white_point[:, None, None]
+
+    # Conversione da XYZ a RGB
+    matrix_xyz_to_rgb = torch.tensor([
+        [ 3.2404542, -1.5371385, -0.4985314],
+        [-0.9692660,  1.8760108,  0.0415560],
+        [ 0.0556434, -0.2040259,  1.0572252]
+    ], dtype=lab.dtype, device=lab.device)
+
+    # Reshape for matrix multiplication
+    xyz_flat = xyz.view(3, -1)  # (3, H*W)
+    rgb_flat = torch.matmul(matrix_xyz_to_rgb, xyz_flat)  # (3, H*W)
+
+    # Reshape back to (3, H, W)
+    rgb = rgb_flat.view(3, lab.shape[1], lab.shape[2])
+
+    # Correzione gamma
+    mask = rgb > 0.0031308
+    rgb[mask] = 1.055 * torch.pow(rgb[mask], 1.0 / 2.4) - 0.055
+    rgb[~mask] = 12.92 * rgb[~mask]
+
+    rgb = torch.clamp(rgb, 0, 1)
+
+    if normalize:
+        rgb = torch.mul(rgb, 255.0)
+
+    return rgb

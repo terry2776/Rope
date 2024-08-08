@@ -67,6 +67,8 @@ class Models():
         self.deoldify_art_model = []
         self.deoldify_stable_model = []
         self.deoldify_video_model = []
+        self.ddcolor_art_model = []
+        self.ddcolor_model = []
 
         self.occluder_model = []
         self.model_xseg = []
@@ -279,6 +281,8 @@ class Models():
         self.deoldify_art_model = []
         self.deoldify_stable_model = []
         self.deoldify_video_model = []
+        self.ddcolor_art_model = []
+        self.ddcolor_model = []
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
@@ -768,6 +772,28 @@ class Models():
 
         self.syncvec.cpu()
         self.deoldify_video_model.run_with_iobinding(io_binding)
+
+    def run_ddcolor_artistic(self, image, output):
+        if not self.ddcolor_art_model:
+            self.ddcolor_art_model = onnxruntime.InferenceSession( "./models/ddcolor_artistic.onnx", providers=self.providers)
+
+        io_binding = self.ddcolor_art_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.ddcolor_art_model.run_with_iobinding(io_binding)
+
+    def run_ddcolor(self, image, output):
+        if not self.ddcolor_model:
+            self.ddcolor_model = onnxruntime.InferenceSession( "./models/ddcolor.onnx", providers=self.providers)
+
+        io_binding = self.ddcolor_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.ddcolor_model.run_with_iobinding(io_binding)
 
     def run_occluder(self, image, output):
         if not self.occluder_model:
