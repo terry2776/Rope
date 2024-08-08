@@ -611,9 +611,9 @@ DEFAULT_DATA = {
 'RestorerTypeTextSelModes':         ['GFPGAN-v1.4', 'CodeFormer', 'GPEN-256', 'GPEN-512', 'GPEN-1024', 'GPEN-2048', 'RestoreFormer++', 'VQFR-v2'],
 
 # Frame Enhancer
-'FrameEnhancerTypeTextSelInfoText': 'FRAME ENHANCER TYPE:\nSelect the Restorer type.\nSpeed: DeOldify Artistic>DeOldify Stable>DeOldify Video>RealEsrgan x2 plus>BSRGan x2>UltraMix x4>UltraSharp x4>RealEsrgan x4 plus>BSRGan x4',
+'FrameEnhancerTypeTextSelInfoText': 'FRAME ENHANCER TYPE:\nSelect the Restorer type.\nSpeed: DeOldify Artistic>DeOldify Stable>DeOldify Video>DDColor Artistic>DDColor>RealEsrgan x2 plus>BSRGan x2>UltraMix x4>UltraSharp x4>RealEsrgan x4 plus>BSRGan x4',
 'FrameEnhancerTypeTextSelMode':     'RealEsrgan-x2-Plus',
-'FrameEnhancerTypeTextSelModes':    ['RealEsrgan-x2-Plus', 'RealEsrgan-x4-Plus', 'BSRGan-x2', 'BSRGan-x4', 'UltraSharp-x4', 'UltraMix-x4', 'DDColor-Artistic', 'DDColor', 'DeOldify-Artistic', 'DeOldify-Stable', 'DeOldify-Video'],
+'FrameEnhancerTypeTextSelModes':    ['RealEsrgan-x2-Plus', 'RealEsrgan-x4-Plus', 'RealEsr-General-x4v3', 'BSRGan-x2', 'BSRGan-x4', 'UltraSharp-x4', 'UltraMix-x4', 'DDColor-Artistic', 'DDColor', 'DeOldify-Artistic', 'DeOldify-Stable', 'DeOldify-Video'],
 #
 
 'WebCamMaxResolSelInfoText':        "WEBCAM MAX RESOLUTION:\nSelect the maximum resolution to be used by the webcam",

@@ -60,6 +60,7 @@ class Models():
         self.RestoreFormerPlusPlus_model = []
         self.realesrganx2plus_model = []
         self.realesrganx4plus_model = []
+        self.realesrx4v3_model = []
         self.ultrasharpx4_model = []
         self.ultramixx4_model = []
         self.bsrganx2_model = []
@@ -274,6 +275,7 @@ class Models():
         self.RestoreFormerPlusPlus_model = []
         self.realesrganx2plus_model = []
         self.realesrganx4plus_model = []
+        self.realesrx4v3_model = []
         self.ultramixx4_model = []
         self.ultrasharpx4_model = []
         self.bsrganx2_model = []
@@ -637,6 +639,8 @@ class Models():
                 fn_upscaler = self.run_ultrasharpx4
             case 'UltraMix-x4':
                 fn_upscaler = self.run_ultramixx4
+            case 'RealEsr-General-x4v3':
+                fn_upscaler = self.run_realesrx4v3
             case _:
                 if pad_right != 0 or pad_bottom != 0:
                     img = v2.functional.crop(img, 0,0, height, width)
@@ -706,6 +710,17 @@ class Models():
 
         self.syncvec.cpu()
         self.realesrganx4plus_model.run_with_iobinding(io_binding)
+
+    def run_realesrx4v3(self, image, output):
+        if not self.realesrx4v3_model:
+            self.realesrx4v3_model = onnxruntime.InferenceSession( "./models/realesr-general-x4v3.onnx", providers=self.providers)
+
+        io_binding = self.realesrx4v3_model.io_binding()
+        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+
+        self.syncvec.cpu()
+        self.realesrx4v3_model.run_with_iobinding(io_binding)
 
     def run_bsrganx4(self, image, output):
         if not self.bsrganx4_model:
