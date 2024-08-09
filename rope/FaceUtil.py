@@ -178,7 +178,7 @@ def warp_affine_torchvision(img, matrix, image_size, rotation_ratio=0.0, border_
     # Extract the translation parameters from the affine matrix
     t = trans.SimilarityTransform()
     t.params[0:2] = matrix
-    
+
     # Define default rotation
     rotation = t.rotation
 
@@ -294,7 +294,7 @@ def estimate_norm_arcface_template(lmk, src=arcface_src):
     min_M = []
     min_index = []
     min_error = float('inf')
-            
+
     for i in np.arange(src.shape[0]):
         tform.estimate(lmk, src[i])
         M = tform.params[0:2, :]
@@ -327,7 +327,7 @@ def estimate_norm(lmk, image_size=112, mode='arcface112'):
             src[:, 0] += (factor * 8.0)
     else:
         src = float(image_size) / 112.0 * src_map[112]
-            
+
     for i in np.arange(src.shape[0]):
         tform.estimate(lmk, src[i])
         M = tform.params[0:2, :]
@@ -355,9 +355,9 @@ def warp_face_by_bounding_box(img, bboxes, image_size=112):
     # Find transform
     tform = trans.SimilarityTransform()
     tform.estimate(source_points, target_points)
-    
+
     # Transform
-    img = v2.functional.affine(img, tform.rotation, (tform.translation[0], tform.translation[1]) , tform.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) ) 
+    img = v2.functional.affine(img, tform.rotation, (tform.translation[0], tform.translation[1]) , tform.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
     img = v2.functional.crop(img, 0,0, image_size, image_size)
     M = tform.params[0:2]
 
@@ -420,7 +420,7 @@ def warp_face_by_bounding_box_for_landmark_68(img, bbox, input_size):
     t = t1 + t2 + t3
     affine_matrix = np.array([ [ scale, 0, translation[0] ], [ 0, scale, translation[1] ] ])
 
-    crop_image = v2.functional.affine(img, t.rotation, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) ) 
+    crop_image = v2.functional.affine(img, t.rotation, (t.translation[0], t.translation[1]) , t.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
     crop_image = v2.functional.crop(crop_image, 0,0, input_size[1], input_size[0])
 
     if torch.mean(crop_image.to(dtype=torch.float32)[0, :, :]) < 30:
@@ -439,7 +439,7 @@ def warp_face_by_bounding_box_for_landmark_98(img, bbox_org, input_size):
     """
     # pad image by image size
     img = pad_image_by_size(img, input_size[0])
-    
+
     ##preprocess
     bbox = bbox_org.copy()
     min_face = 20
@@ -468,7 +468,7 @@ def warp_face_by_bounding_box_for_landmark_98(img, bbox_org, input_size):
     crop_image = bimg[:, bbox[1]:bbox[3], bbox[0]:bbox[2]]
 
     h, w = (crop_image.size(dim=1), crop_image.size(dim=2))
-    
+
     t_resize = v2.Resize((input_size[1], input_size[0]), antialias=False)
     crop_image = t_resize(crop_image)
 
@@ -513,14 +513,14 @@ def convert_face_landmark_98_to_5(face_landmark_98, face_landmark_98_score):
         face_landmark_98[76], # lip left
         face_landmark_98[82]  # lip right
     ])
-    
+
     face_landmark_5_score = np.array(
     [
         face_landmark_98_score[96], # eye left
         face_landmark_98_score[97], # eye-right
         face_landmark_98_score[54], # nose,
         face_landmark_98_score[76], # lip left
-        face_landmark_98_score[82]  # lip right        
+        face_landmark_98_score[82]  # lip right
     ])
 
     return face_landmark_5, face_landmark_5_score
@@ -557,7 +557,7 @@ def test_bbox_landmarks(img, bbox, kpss, caption='image', show_kpss_label=False)
             box = bbox.astype(int)
             color = (255, 0, 0)
             cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), color, 2)
-        
+
         if len(kpss) > 0:
             for i in range(kpss.shape[0]):
                 kps = kpss[i].astype(int)
@@ -576,10 +576,10 @@ def test_bbox_landmarks(img, bbox, kpss, caption='image', show_kpss_label=False)
                             text = "LM"
                         case 4:
                             text = "RM"
-                    image = cv2.putText(image, text, (kps[0], kps[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False) 
+                    image = cv2.putText(image, text, (kps[0], kps[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2, cv2.LINE_AA, False)
 
-        cv2.imshow(caption, image) 
-        cv2.waitKey(0)         
+        cv2.imshow(caption, image)
+        cv2.waitKey(0)
         cv2.destroyAllWindows()
 
 def test_multi_bbox_landmarks(img, bboxes, kpss, caption='image', show_kpss_label=False):
@@ -596,19 +596,19 @@ def test_multi_bbox_landmarks(img, bboxes, kpss, caption='image', show_kpss_labe
 def detect_img_color(img):
     frame = img.permute(1,2,0)
 
-    b = frame[:, :, :1] 
-    g = frame[:, :, 1:2] 
-    r = frame[:, :, 2:] 
-  
-    # computing the mean 
-    b_mean = torch.mean(b.to(float)) 
-    g_mean = torch.mean(g.to(float)) 
-    r_mean = torch.mean(r.to(float)) 
+    b = frame[:, :, :1]
+    g = frame[:, :, 1:2]
+    r = frame[:, :, 2:]
 
-    # displaying the most prominent color 
-    if (b_mean > g_mean and b_mean > r_mean): 
+    # computing the mean
+    b_mean = torch.mean(b.to(float))
+    g_mean = torch.mean(g.to(float))
+    r_mean = torch.mean(r.to(float))
+
+    # displaying the most prominent color
+    if (b_mean > g_mean and b_mean > r_mean):
         return 'BGR'
-    elif (g_mean > r_mean and g_mean > b_mean): 
+    elif (g_mean > r_mean and g_mean > b_mean):
         return 'GBR'
 
     return 'RGB'
@@ -623,7 +623,6 @@ def get_face_orientation(face_size, lmk):
     angle_deg_to_front = np.rad2deg(tform.rotation)
 
     return angle_deg_to_front
-
 
 def rgb_to_yuv(image, normalize=False):
     """
@@ -641,10 +640,10 @@ def rgb_to_yuv(image, normalize=False):
     conversion_matrix = torch.tensor([[0.299, 0.587, 0.114],
                                       [-0.14713, -0.28886, 0.436],
                                       [0.615, -0.51499, -0.10001]], device=image.device, dtype=image.dtype)
-    
+
     # Apply the conversion matrix
     yuv_image = torch.tensordot(image.permute(1, 2, 0), conversion_matrix, dims=1).permute(2, 0, 1)
-    
+
     return yuv_image
 
 def yuv_to_rgb(image, normalize=False):
@@ -659,16 +658,16 @@ def yuv_to_rgb(image, normalize=False):
     conversion_matrix = torch.tensor([[1, 0, 1.13983],
                                       [1, -0.39465, -0.58060],
                                       [1, 2.03211, 0]], device=image.device, dtype=image.dtype)
-    
+
     # Apply the conversion matrix
     rgb_image = torch.tensordot(image.permute(1, 2, 0), conversion_matrix, dims=1).permute(2, 0, 1)
-    
+
     # Ensure the image is in the range [0, 1]
     rgb_image = torch.clamp(rgb_image, 0, 1)
-    
+
     if normalize:
         rgb_image = torch.mul(rgb_image, 255.0)
-        
+
     return rgb_image
 
 def rgb_to_lab(rgb, normalize=False):
@@ -687,7 +686,7 @@ def rgb_to_lab(rgb, normalize=False):
         [0.2126729, 0.7151522, 0.0721750],
         [0.0193339, 0.1191920, 0.9503041]
     ], dtype=rgb.dtype, device=rgb.device)
-    
+
     rgb = rgb.permute(1, 2, 0).contiguous()
     xyz = torch.matmul(rgb.view(-1, 3), matrix_rgb_to_xyz.T).view(rgb.shape)
 
