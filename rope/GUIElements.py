@@ -853,6 +853,7 @@ class Slider2():
         self.entry = tk.Entry(self.frame, self.entry_style, textvariable=self.entry_string)
         self.entry.place(x=self.entry_x, y=self.entry_y)
         self.entry.bind('<Return>', lambda event: self.entry_input(event))
+        self.entry.bind('<Tab>', lambda event: self.entry_input(event))
 
         # Draw the slider
         self.slider_pad = 20
