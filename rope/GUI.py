@@ -2488,7 +2488,66 @@ class GUI(tk.Tk):
         if os.path.exists(json_file_path):
             # Load the markers from the JSON file
             with open(json_file_path, 'r') as json_file:
-                self.markers = json.load(json_file)
+                loaded_markers = json.load(json_file)
+
+            # Define update rules for parameters using lambda functions returning a list of key(s) to update
+            # By default keys that do not exist in the loaded_markers will take the value currently in "parameters"
+            update_rules = {
+                # Example: Force TensorRT (previously no value, if not specified would default to current parameters in UI)
+                #"ProvidersPriorityTextSel": lambda value, loaded_marker: {
+                #    "ProvidersPriorityTextSel": "TensorRT",
+                #},
+                # Fix Restorer with Alucard values
+                "RestorerTypeTextSel": lambda value, loaded_marker: {
+                    "RestorerTypeTextSel": {
+                        "GFPGAN": "GFPGAN-v1.4",
+                        "CF": "CodeFormer",
+                        "GPEN256": "GPEN-256",
+                        "GPEN512": "GPEN-512"
+                    }.get(value, value)  # Default to the original value if no match
+                },
+                # Fix Face Parser Mouth Slider which is more granular now.
+                # Split former MouthSlider in two equal parts and assign to upper/lower lips.
+                "MouthParserSlider": lambda value, loaded_marker: (
+                    {
+                        "MouthParserSlider": max(5, value),
+                        "UpperLipParserSlider": value // 2 if value > 0 else 8,
+                        "LowerLipParserSlider": value // 2 if value > 0 else 8
+                    # Only update if these keys didn't exist in the in loaded parameters
+                    } if not {"UpperLipParserSlider", "LowerLipParserSlider"} & loaded_marker.keys() else { 
+                        # Otherwise we still need to give a value to the key otherwise it will not be loaded.
+                        "MouthParserSlider": value,
+                    }
+                ),
+            }
+
+            # Update markers with existing parameters and update rules
+            updated_markers = []
+            for loaded_marker in loaded_markers:
+                updated_parameters = {}
+                rules_updated_keys = set()  # Track parameters that have been updated
+                for key in self.parameters:
+                    # Get the current value from the marker or use the default
+                    value = loaded_marker['parameters'].get(key, self.parameters[key])
+
+                    # Apply update rules if available
+                    if key in update_rules:
+                        updates = update_rules[key](value, loaded_marker['parameters'])
+                        for update_key, update_value in updates.items():
+                            updated_parameters[update_key] = update_value
+                            rules_updated_keys.add(update_key)
+                    else:
+                        if key not in rules_updated_keys:
+                            updated_parameters[key] = value
+
+                updated_marker = {
+                    'frame': loaded_marker['frame'],
+                    'parameters': updated_parameters,
+                    'icon_ref': loaded_marker.get('icon_ref')  # Preserve icon_ref if it exists
+                }
+                updated_markers.append(updated_marker)
+
+            self.markers = updated_markers
             self.add_action("update_markers_canvas", self.markers)
 
     def update_markers_canvas(self):
