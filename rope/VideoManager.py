@@ -23,6 +23,8 @@ import rope.FaceUtil as faceutil
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 import pyvirtualcam
 import platform
+import psutil
+
 device = 'cuda'
 
 lock=threading.Lock()
@@ -354,17 +356,20 @@ class VideoManager():
                         '-af', f'atempo={self.parameters["AudioSpeedSlider"]}',
                         self.video_file]
 
-                self.audio_sp = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text = True)
+                self.audio_sp = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
                 # Parse the console to find where the audio started
                 while True:
-                    timestr = self.audio_sp.stdout.readline().split()[0]
-                    if timestr != "nan":
-                        sought_time = float(timestr)
-                        if sought_time >= 0:
+                    temp = self.audio_sp.stdout.read(69)
+                    if temp[:7] != b'    nan' and temp[:7] !=  b'M-A:   ':
+                        try:
+                            sought_time = float(temp[:7].strip())
                             self.current_frame = int(self.fps*sought_time)
                             self.capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame)
-                            break
+                        except Exception as e:
+                            #print(e)
+                            pass
+                        break
 
 #'    nan    :  0.000
 #'   1.25 M-A:  0.000 fd=   0 aq=   12KB vq=    0KB sq=    0B f=0/0'
@@ -379,7 +384,7 @@ class VideoManager():
                 self.current_frame = min_frame-1
 
             if self.control['AudioButton']:
-                self.audio_sp.terminate()
+                self.terminate_audio_process_tree()
 
             torch.cuda.empty_cache()
 
@@ -392,7 +397,7 @@ class VideoManager():
                 self.current_frame = min_frame-1
 
             if self.control['AudioButton']:
-                self.audio_sp.terminate()
+                self.terminate_audio_process_tree()
 
             torch.cuda.empty_cache()
 
@@ -439,6 +444,35 @@ class VideoManager():
             elif self.parameters['RecordTypeTextSel']=='OPENCV':
                 size = (frame_width, frame_height)
                 self.sp = cv2.VideoWriter(self.temp_file,  cv2.VideoWriter_fourcc(*'mp4v') , self.fps, size)
+
+    def terminate_audio_process_tree(self):
+        if hasattr(self, 'audio_sp') and self.audio_sp is not None:
+            parent_pid = self.audio_sp.pid
+
+            try:
+                # Terminate any child processes spawned by ffplay
+                try:
+                    parent_proc = psutil.Process(parent_pid)
+                    children = parent_proc.children(recursive=True)
+                    for child in children:
+                        try:
+                            child.kill()
+                        except psutil.NoSuchProcess:
+                            pass  # The child process has already terminated
+                except psutil.NoSuchProcess:
+                    pass  # The parent process has already terminated
+
+                # Terminate the parent process
+                self.audio_sp.terminate()
+                try:
+                    self.audio_sp.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.audio_sp.kill()
+
+            except psutil.NoSuchProcess:
+                pass  # The process no longer exists
+            
+            self.audio_sp = None
 
     # @profile
     def process(self):

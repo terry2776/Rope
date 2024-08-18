@@ -2595,9 +2595,14 @@ class GUI(tk.Tk):
             # self.CLIP_text.insert(0, self.parameters['CLIPText'])
 
     def toggle_audio(self):
+        self.add_action('play_video', 'stop_from_gui')
+
         self.widget['AudioButton'].toggle_button()
         self.control['AudioButton'] = self.widget['AudioButton'].get()
         self.add_action('control', self.control)
+
+        if self.widget['TLPlayButton'].get():
+            self.add_action('play_video', 'play')
 
     def toggle_maskview(self):
         self.widget['MaskViewButton'].toggle_button()
