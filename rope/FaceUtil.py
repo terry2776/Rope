@@ -75,6 +75,18 @@ def transform(img, center, output_size, scale, rotation):
     return cropped, M
 
 def trans_points2d(pts, M):
+    # Add a column of ones to the pts array to create homogeneous coordinates
+    ones_column = np.ones((pts.shape[0], 1), dtype=np.float32)
+    homogeneous_pts = np.hstack([pts, ones_column])
+
+    # Perform the matrix multiplication for all points at once
+    transformed_pts = np.dot(homogeneous_pts, M.T)
+
+    # Return only the first two columns (x and y coordinates)
+    return transformed_pts[:, :2]
+
+'''
+def trans_points2d(pts, M):
     new_pts = np.zeros(shape=pts.shape, dtype=np.float32)
     for i in range(pts.shape[0]):
         pt = pts[i]
@@ -84,7 +96,27 @@ def trans_points2d(pts, M):
         new_pts[i] = new_pt[0:2]
 
     return new_pts
+'''
 
+def trans_points3d(pts, M):
+    scale = np.sqrt(M[0, 0]**2 + M[0, 1]**2)
+
+    # Add a column of ones to the pts array to create homogeneous coordinates for 2D transformation
+    ones_column = np.ones((pts.shape[0], 1), dtype=np.float32)
+    homogeneous_pts = np.hstack([pts[:, :2], ones_column])
+
+    # Perform the matrix multiplication for all points at once
+    transformed_2d = np.dot(homogeneous_pts, M.T)
+
+    # Scale the z-coordinate
+    scaled_z = pts[:, 2] * scale
+
+    # Combine the transformed 2D points with the scaled z-coordinate
+    transformed_pts = np.hstack([transformed_2d[:, :2], scaled_z.reshape(-1, 1)])
+
+    return transformed_pts
+
+'''
 def trans_points3d(pts, M):
     scale = np.sqrt(M[0][0] * M[0][0] + M[0][1] * M[0][1])
     new_pts = np.zeros(shape=pts.shape, dtype=np.float32)
@@ -97,6 +129,7 @@ def trans_points3d(pts, M):
         new_pts[i][2] = pts[i][2] * scale
 
     return new_pts
+'''
 
 def trans_points(pts, M):
     if pts.shape[1] == 2:
