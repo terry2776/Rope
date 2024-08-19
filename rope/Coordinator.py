@@ -1,5 +1,5 @@
 # #!/usr/bin/env python3
-import threading
+
 import time
 import torch
 from torchvision import transforms
@@ -12,68 +12,32 @@ from rope.external.clipseg import CLIPDensePredT
 resize_delay = 1
 mem_delay = 1
 
-def loop():
-    while not stop.is_set():
-        if coordinator():
-            time.sleep(0.001)
-
-
-def quit_app():
-    global main_thread
-    stop.set()
-    main_thread.join()
-    gui.destroy()
-
-
-def coordinator_gui():
-    global gui, vm, frame, r_frame
-
-    if vm.get_frame_length() > 0:
-        frame.append(vm.get_frame())
-
-    if len(frame) > 0:
-        gui.set_image(frame[0], False)
-        frame.pop(0)
-
-    if vm.get_requested_frame_length() > 0:
-        r_frame.append(vm.get_requested_frame())
-    if len(r_frame) > 0:
-        gui.set_image(r_frame[0], True)
-        r_frame=[]
-
-    gui.after(10, coordinator_gui)
-
-
 # @profile
 def coordinator():
     global gui, vm, action, frame, r_frame, load_notice, resize_delay, mem_delay
     # start = time.time()
-    work = False
 
     if gui.get_action_length() > 0:
         action.append(gui.get_action())
     if vm.get_action_length() > 0:
         action.append(vm.get_action())
 ##################
-    # if vm.get_frame_length() > 0:
-    #     work = True
-    #     frame.append(vm.get_frame())
-    #
-    # if len(frame) > 0:
-    #     gui.set_image(frame[0], False)
-    #     frame.pop(0)
+    if vm.get_frame_length() > 0:
+        frame.append(vm.get_frame())
+
+    if len(frame) > 0:
+        gui.set_image(frame[0], False)
+        frame.pop(0)
  ####################
-    # if vm.get_requested_frame_length() > 0:
-    #     work = True
-    #     r_frame.append(vm.get_requested_frame())
-    # if len(r_frame) > 0:
-    #     gui.set_image(r_frame[0], True)
-    #     r_frame=[]
+    if vm.get_requested_frame_length() > 0:
+        r_frame.append(vm.get_requested_frame())
+    if len(r_frame) > 0:
+        gui.set_image(r_frame[0], True)
+        r_frame=[]
  ####################
     if len(action) > 0:
         # print('Action:', action[0][0])
         # print('Value:', action[0][1])
-        work = True
         if action[0][0] == "load_target_video":
             vm.load_target_video(action[0][1])
             action.pop(0)
@@ -182,6 +146,12 @@ def coordinator():
             print("Action not found: "+action[0][0]+" "+str(action[0][1]))
             action.pop(0)
 
+    if resize_delay > 100:
+        gui.check_for_video_resize()
+        resize_delay = 0
+    else:
+        resize_delay +=1
+
     if mem_delay > 1000:
         gui.update_vram_indicator()
         mem_delay = 0
@@ -189,7 +159,8 @@ def coordinator():
         mem_delay +=1
 
     vm.process()
-    return not work
+    gui.after(1, coordinator)
+    # print(time.time() - start)
 
 def load_clip_model():
     # https://github.com/timojl/clipseg
@@ -203,7 +174,7 @@ def load_clip_model():
 
 def run():
     global gui, vm, action, frame, r_frame, resize_delay, mem_delay
-    global stop, main_thread
+
     models = Models.Models()
     gui = GUI.GUI(models)
     vm = VM.VideoManager(models)
@@ -214,12 +185,7 @@ def run():
 
     gui.initialize_gui()
 
-    gui.protocol("WM_DELETE_WINDOW", quit_app)
-    stop = threading.Event()
-    main_thread = threading.Thread(target=loop)
-    main_thread.start()
-
-    gui.after(10, coordinator_gui)
+    coordinator()
 
     gui.mainloop()
 

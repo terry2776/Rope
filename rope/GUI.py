@@ -203,6 +203,8 @@ class GUI(tk.Tk):
         #region [#131710b4]
 
         # Keyboard Shortcuts
+        self.widget = {}
+
         def load_shortcuts_from_json():
             try:
                 with open("shortcuts.json", "r") as json_file:
@@ -270,7 +272,6 @@ class GUI(tk.Tk):
         }
         self.bind('<Key>', self.handle_key_press)
         self.bind("<Return>", lambda event: self.focus_set())
-        self.bind("<Configure>", self.check_for_video_resize)
 
     def handle_key_press(self, event):
         if isinstance(self.focus_get(), tk.Entry):
@@ -654,15 +655,13 @@ class GUI(tk.Tk):
         self.video.grid(row=1, column=0, sticky='NEWS', padx=0, pady=0)
         self.video.bind("<MouseWheel>", self.iterate_through_merged_embeddings)
         self.video.bind("<ButtonRelease-1>", lambda event: self.toggle_play_video())
-        self.video.bind("<Configure>", self.resize_image)
 
     # Videos
       # Timeline
         # Slider
         self.layer['slider_frame'] = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_2, height=20)
         self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
-        self.video_slider = GE.Timeline(self.layer['slider_frame'], self.widget, self.temp_toggle_swapper,
-                                        self.temp_toggle_enhancer, self.add_action, self.after, self.after_cancel)
+        self.video_slider = GE.Timeline(self.layer['slider_frame'], self.widget, self.temp_toggle_swapper, self.temp_toggle_enhancer, self.add_action)
 
         # Markers
         self.layer['markers_canvas'] = tk.Canvas(self.layer['preview_column'], style.canvas_frame_label_2, height = 20)
@@ -2023,7 +2022,7 @@ class GUI(tk.Tk):
         self.resize_image()
 
     # @profile
-    def resize_image(self, event=None):
+    def resize_image(self):
         image = self.video_image
 
         if len(image) != 0:
@@ -2055,11 +2054,30 @@ class GUI(tk.Tk):
             self.video.image = image
             self.video.configure(image=self.video.image)
 
-    def check_for_video_resize(self, event):
+    def check_for_video_resize(self):
+
         # Read the geometry from the last time json was updated. json only updates once the window ahs stopped changing
         win_geom = '%dx%d+%d+%d' % (self.json_dict['dock_win_geom'][0], self.json_dict['dock_win_geom'][1] , self.json_dict['dock_win_geom'][2], self.json_dict['dock_win_geom'][3])
 
+        # # window has started changing
         if self.winfo_geometry() != win_geom:
+            # Resize image in video window
+            self.resize_image()
+            for k, v in self.widget.items():
+                v.hide()
+            for k, v in self.static_widget.items():
+                v.hide()
+
+            # Check if window has stopped changing
+            if self.winfo_geometry() != self.window_last_change:
+                self.window_last_change = self.winfo_geometry()
+
+            # The window has stopped changing
+            else:
+                for k, v in self.widget.items():
+                    v.unhide()
+                for k, v in self.static_widget.items():
+                    v.unhide()
                 # Update json
                 str1 = self.winfo_geometry().split('x')
                 str2 = str1[1].split('+')

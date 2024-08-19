@@ -174,11 +174,9 @@ class Scrollbar_y():
         pass
 
 class Timeline():
-    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action, after, after_cancel):
+    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action):
         self.parent = parent
         self.add_action = add_action
-        self.after = after
-        self.after_cancel = after_cancel
         self.temp_toggle_swapper = temp_toggle_swapper
         self.temp_toggle_enhancer = temp_toggle_enhancer
 
@@ -197,8 +195,6 @@ class Timeline():
         self.handle = []
         self.slider_left = []
         self.slider_right = []
-
-        self.slider_delay_id = ''
 
         # Event trigget for window resize
         self.parent.bind('<Configure>', self.window_resize)
@@ -233,7 +229,7 @@ class Timeline():
         line_loc = self.pos2coord(self.last_position)
 
         line_height = 8
-        line_width = 8
+        line_width = 1.5
         line_x1 = line_loc-line_width
         line_y1 = slider_center -line_height
         line_x2 = line_loc+line_width
@@ -267,11 +263,16 @@ class Timeline():
                 x_coord = float(event.x)
                 position = self.coord2pos(x_coord)
 
+                # Turn off swapping
+                self.temp_toggle_swapper('off')
                 self.add_action("play_video", "stop")
 
             elif event.type == '5': # l-button release
                 x_coord = float(event.x)
                 position = self.coord2pos(x_coord)
+
+                # Turn on swapping, if it was already on and request new frame
+                self.temp_toggle_swapper('on')
 
             elif event.type == '6': # l-button drag
                 x_coord = float(event.x)
@@ -290,9 +291,7 @@ class Timeline():
             self.slider.move(self.handle, self.pos2coord(position) - self.pos2coord(self.last_position), 0)
 
             if requested:
-                if len(self.slider_delay_id) > 0:
-                    self.after_cancel(self.slider_delay_id)
-                self.slider_delay_id = self.after(200, self.add_action, "get_requested_video_frame", position)
+                self.add_action("get_requested_video_frame", position)
 
             # Save for next time
             self.last_position = position
