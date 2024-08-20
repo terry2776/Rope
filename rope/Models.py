@@ -835,6 +835,7 @@ class Models():
         if not self.faceparser_model:
             self.faceparser_model = onnxruntime.InferenceSession("./models/faceparser_fp16.onnx", providers=self.providers)
 
+        image = image.contiguous()
         io_binding = self.faceparser_model.io_binding()
         io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
         io_binding.bind_output(name='out', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
@@ -2717,7 +2718,7 @@ class Models():
         # image = image.transpose(2, 0, 1)
         # image = np.float32(image[np.newaxis,:,:,:])
         image = image.permute(2,0,1)
-        image = torch.reshape(image, (1, 3, 512, 512))
+        image = torch.reshape(image, (1, 3, 512, 512)).contiguous()
 
         height, width = (512, 512)
         tmp = [width, height, width, height, width, height, width, height, width, height]
