@@ -1,12 +1,200 @@
 import tkinter as tk
 from tkinter import font
 from PIL import Image, ImageTk
-
 from  rope.Dicts import DEFAULT_DATA
 import rope.Styles as style
 import customtkinter as ctk
 
 #import inspect print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
+
+icon_off = None
+icon_on = None
+
+def load_switch_icons():
+    global icon_off, icon_on
+    icon_off_img = Image.open(style.icon['IconOff']).resize((40, 40), Image.ANTIALIAS)
+    icon_on_img = Image.open(style.icon['IconOn']).resize((40, 40), Image.ANTIALIAS)
+    icon_off = ImageTk.PhotoImage(icon_off_img)
+    icon_on = ImageTk.PhotoImage(icon_on_img)
+
+class CTkScrollableFrame(ctk.CTkFrame):
+    def __init__(self, parent, allow_drag_and_drop=True, min_row_for_drag=0, allowed_widget_type=None, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.is_resizing = False
+
+        self.canvas = ctk.CTkCanvas(self, bg="white", highlightthickness=0)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+
+        self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        # Definisco lo scrollable_frame come un sottoclasse di CTkFrame per includere i metodi necessari
+        if allow_drag_and_drop:
+            self.scrollable_frame = ScrollableFrameContent(self.canvas, canvas=self.canvas, allowed_widget_type=allowed_widget_type, **kwargs)
+        else:
+            self.scrollable_frame = ctk.CTkFrame(self.canvas, **kwargs)
+
+        self.scrollable_frame.bind("<Configure>", self.on_frame_configure)
+
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        parent.bind("<Configure>", self.on_resize)
+
+    def on_frame_configure(self, event=None):
+        if not self.is_resizing:
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def on_resize(self, event=None):
+        self.is_resizing = True
+        self.canvas.update_idletasks()
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.is_resizing = False
+
+class ScrollableFrameContent(ctk.CTkFrame):
+    def __init__(self, parent, canvas, allowed_widget_type=None, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.canvas = canvas  # Referenza al canvas per controllare lo scrolling
+        self.allowed_widget_type = allowed_widget_type  # Tipo di widget che può essere trascinato
+        self.drag_data = {"widget": None, "start_row": None, "start_y": None, "placeholder": None, "floating_label": None}
+
+    def start_drag(self, event):
+        if event.num != 1:  # Assicuriamoci di gestire solo il pulsante sinistro
+            return
+
+        # rimuovi "floating_label" se rimasta appesa
+        self.cancel_drag()
+
+        widget = event.widget
+        while not isinstance(widget, tk.Frame) and not isinstance(widget, tk.Label):
+            widget = widget.master
+
+        # Controlla se il tipo di widget è consentito
+        if self.allowed_widget_type:
+            # Verifica che il widget abbia l'attributo `draggable_object_instance`
+            if not hasattr(widget.master, 'draggable_object_instance'):
+                return
+            # Verifica che il tipo del controllo corrisponda a quello consentito
+            if not isinstance(widget.master.draggable_object_instance, self.allowed_widget_type):
+                return
+
+        self.drag_data["widget"] = widget.master  # Assume che il widget sia un Label o altro figlio di frame
+        self.drag_data["start_row"] = widget.master.grid_info()["row"]
+        self.drag_data["start_y"] = event.y_root
+
+        # Crea un placeholder per mantenere lo spazio
+        self.drag_data["placeholder"] = ctk.CTkFrame(self, width=widget.master.winfo_width(), height=widget.master.winfo_height(), fg_color="transparent")
+        self.drag_data["placeholder"].grid(row=self.drag_data["start_row"], column=0, padx=widget.master.grid_info()["padx"], pady=widget.master.grid_info()["pady"])
+
+        widget.master.lift()
+
+        # Crea la floating label
+        self.drag_data["floating_label"] = ctk.CTkLabel(self, text=widget.cget("text"), fg_color="yellow", text_color="black", corner_radius=5)
+        self.drag_data["floating_label"].place(x=event.x_root - self.winfo_rootx(), y=event.y_root - self.winfo_rooty())
+
+    def on_drag(self, event):
+        if not self.drag_data["widget"]:  # Se non c'è un widget in drag, esci
+            return
+
+        widget = self.drag_data["widget"]
+        y = event.y_root - self.winfo_rooty()
+        new_row = max(0, min(self.grid_size()[1] - 1, y // widget.winfo_height()))
+
+        if new_row != self.drag_data["start_row"]:
+            self.drag_data["placeholder"].grid(row=new_row, column=0)
+
+        # Aggiorna la posizione della floating label
+        self.drag_data["floating_label"].place(x=event.x_root - self.winfo_rootx(), y=event.y_root - self.winfo_rooty())
+
+        # Implementazione dell'autoscroll
+        self.autoscroll(event)
+
+    def autoscroll(self, event):
+        # Calcola la posizione relativa del mouse rispetto al canvas
+        canvas_y = event.y_root - self.canvas.winfo_rooty()
+
+        # Determina se il mouse è vicino ai bordi del canvas
+        if canvas_y < 20:  # Vicino alla parte superiore
+            self.scroll_slowly(-0.005)  # Scroll lento verso l'alto
+        elif canvas_y > self.canvas.winfo_height() - 20:  # Vicino alla parte inferiore
+            self.scroll_slowly(0.005)  # Scroll lento verso il basso
+
+    def scroll_slowly(self, delta):
+        current_view = self.canvas.yview()
+        new_view = current_view[0] + delta
+        new_view = max(0, min(new_view, 1))  # Limita la vista tra 0 e 1
+        self.canvas.yview_moveto(new_view)
+
+    def end_drag(self, event):
+        if event.num != 1:  # Assicuriamoci di gestire solo il pulsante sinistro
+            return
+
+        widget = self.drag_data["widget"]
+        if widget:
+            y = event.y_root - self.winfo_rooty()
+            new_row = max(0, min(self.grid_size()[1] - 1, y // widget.winfo_height()))
+
+            # Verifica che il widget nella nuova riga sia del tipo consentito
+            target_widgets = self.grid_slaves(row=new_row)
+            found_valid_target = False
+
+            for target_widget in target_widgets:
+                # Se il widget non è del tipo che ci interessa, lo ignoriamo e cerchiamo di trovare un altro widget nella stessa riga
+                if not hasattr(target_widget, 'draggable_object_instance'):
+                    continue  # Ignora e continua la ricerca
+
+                # Verifica se il widget è del tipo consentito
+                if isinstance(target_widget.draggable_object_instance, self.allowed_widget_type):
+                    # Trovato un widget valido, esci dal ciclo
+                    found_valid_target = True
+                    break
+
+            # Se nessun widget valido è stato trovato nella riga, annulla il drag
+            if not found_valid_target:
+                #print("Drop non consentito: nessun widget valido trovato nella riga di destinazione.")
+                self.cancel_drag()
+                return
+
+            if new_row != self.drag_data["start_row"]:
+                self.rearrange_rows(self.drag_data["start_row"], new_row)
+
+        self.cleanup_drag()
+
+    def cancel_drag(self):
+        """Annulla il drag riportando il widget alla posizione originale."""
+        if self.drag_data["widget"]:
+            self.drag_data["widget"].grid(row=self.drag_data["start_row"], column=0)
+        self.cleanup_drag()
+
+    def cleanup_drag(self):
+        """Pulisce i dati di drag e ripristina lo stato."""
+        if self.drag_data["floating_label"]:
+            self.drag_data["floating_label"].destroy()
+        if self.drag_data["placeholder"]:
+            self.drag_data["placeholder"].destroy()
+
+        self.drag_data = {"widget": None, "start_row": None, "start_y": None, "placeholder": None, "floating_label": None}
+
+    def rearrange_rows(self, start_row, new_row):
+        widgets = []
+        for row in range(min(start_row, new_row), max(start_row, new_row) + 1):
+            for widget in self.grid_slaves(row=row):
+                widgets.append(widget)
+
+        if start_row < new_row:
+            for widget in widgets:
+                current_row = widget.grid_info()["row"]
+                widget.grid(row=current_row - 1)
+
+        elif start_row > new_row:
+            for widget in reversed(widgets):
+                current_row = widget.grid_info()["row"]
+                widget.grid(row=current_row + 1)
+
+        self.drag_data["widget"].grid(row=new_row, column=0)
 
 class Separator_x():
     def __init__(self, parent, x, y):
@@ -17,6 +205,7 @@ class Separator_x():
         self.blank = tk.PhotoImage()
         self.sep = tk.Label(self.parent, bg='#090909', image=self.blank, compound='c', border=0, width=self.parent.winfo_width(), height=1)
         self.sep.place(x=self.x, y=self.y)
+        self.is_resizing = False
         # self.parent.bind('<Configure>', self.update_sep_after_window_resize)
 
     # def update_sep_after_window_resize(self, event):
@@ -24,12 +213,14 @@ class Separator_x():
         # self.sep.configure(width=self.parent.winfo_width())
 
     def hide(self):
-        self.sep.place_forget()
+        if not self.is_resizing:
+            self.sep.place_forget()
 
     def unhide(self):
-        self.parent.update()
-        self.sep.place(x=self.x, y=self.y)
-        self.sep.configure(width=self.parent.winfo_width())
+        if not self.is_resizing:
+            self.parent.update()
+            self.sep.place(x=self.x, y=self.y)
+            self.sep.configure(width=self.parent.winfo_width())
 
 class Separator_y():
     def __init__(self, parent, x, y):
@@ -40,6 +231,7 @@ class Separator_y():
         self.blank = tk.PhotoImage()
         self.sep = tk.Label(self.parent, bg='#090909', image=self.blank, compound='c', border=0, width=1, height=self.parent.winfo_height())
         self.sep.place(x=self.x, y=self.y)
+        self.is_resizing = False
         # self.parent.bind('<Configure>', self.update_sep_after_window_resize)
 
     # def update_sep_after_window_resize(self, event):
@@ -47,16 +239,19 @@ class Separator_y():
         # self.sep.configure(height=self.parent.winfo_height())
 
     def hide(self):
-        self.sep.place_forget()
+        if not self.is_resizing:
+            self.sep.place_forget()
 
     def unhide(self):
-        self.parent.update()
-        self.sep.place(x=self.x, y=self.y)
-        self.sep.configure(height=self.parent.winfo_height())
+        if not self.is_resizing:
+            self.parent.update()
+            self.sep.place(x=self.x, y=self.y)
+            self.sep.configure(height=self.parent.winfo_height())
 
 class Text():
     def __init__(self, parent, text, style_level, x, y, width, height):
         self.blank = tk.PhotoImage()
+        self.is_resizing = False
 
         if style_level == 1:
             self.style = style.text_1
@@ -70,6 +265,109 @@ class Text():
 
     def configure(self, text):
         self.label.configure(text=text)
+
+class Scrollbar_x():
+    def __init__(self, parent, child):
+
+        self.child = child
+
+        self.trough_short_dim = 15
+        self.trough_long_dim = []
+        self.handle_short_dim = self.trough_short_dim * 0.5
+
+        self.left_of_handle = []
+        self.middle_of_handle = []
+        self.right_of_handle = []
+
+        self.old_coord = 0
+        self.is_resizing = False
+
+        # Child data
+        self.child.bind('<Configure>', self.resize_scrollbar)
+
+        # Set the canvas
+        self.scrollbar_canvas = parent
+        self.scrollbar_canvas.configure(height=self.trough_short_dim)
+        self.scrollbar_canvas.bind("<MouseWheel>", self.scroll)
+        self.scrollbar_canvas.bind("<ButtonPress-1>", self.scroll)
+        self.scrollbar_canvas.bind("<B1-Motion>", self.scroll)
+
+        # Draw handle
+        self.resize_scrollbar(None)
+
+    def resize_scrollbar(self, event):  # on window updates
+        self.child.update()
+        self.child.configure(scrollregion=self.child.bbox("all"))
+
+        # Reconfigure data
+        self.trough_long_dim = self.child.winfo_width()
+        self.scrollbar_canvas.delete('all')
+        self.scrollbar_canvas.configure(width=self.trough_long_dim)
+
+        # Redraw the scrollbar
+        y1 = (self.trough_short_dim - self.handle_short_dim) / 2
+        y2 = self.trough_short_dim - y1
+        x1 = self.child.xview()[0] * self.trough_long_dim
+        x2 = self.child.xview()[1] * self.trough_long_dim
+
+        self.middle_of_handle = self.scrollbar_canvas.create_rectangle(x1, y1, x2, y2, fill='grey25', outline='')
+
+    def scroll(self, event):
+        delta = 0
+
+        # Get handle dimensions
+        handle_x1 = self.scrollbar_canvas.coords(self.middle_of_handle)[0]
+        handle_x2 = self.scrollbar_canvas.coords(self.middle_of_handle)[2]
+        handle_center = (handle_x2 - handle_x1) / 2 + handle_x1
+        handle_length = handle_x2 - handle_x1
+
+        if event.type == '38':  # mousewheel
+            delta = -int(event.delta / 20.0)
+
+        elif event.type == '4':  # l-button press
+            # If the mouse coord is within the handle don't jump the handle
+            if event.x > handle_x1 and event.x < handle_x2:
+                self.old_coord = event.x
+            else:
+                self.old_coord = handle_center
+
+            delta = event.x - self.old_coord
+
+        elif event.type == '6':  # l-button drag
+            delta = event.x - self.old_coord
+
+        # Do some bounding
+        if handle_x1 + delta < 0:
+            delta = -handle_x1
+        elif handle_x2 + delta > self.trough_long_dim:
+            delta = self.trough_long_dim - handle_x2
+
+        # Update the scrollbar
+        self.scrollbar_canvas.move(self.middle_of_handle, delta, 0)
+
+        # Get the new handle position to calculate the change for the child
+        handle_x1 = self.scrollbar_canvas.coords(self.middle_of_handle)[0]
+
+        # Move the child
+        self.child.xview_moveto(handle_x1 / self.trough_long_dim)
+
+        self.old_coord = event.x
+
+    def set(self, value):
+        handle_x1 = self.scrollbar_canvas.coords(self.middle_of_handle)[0]
+        handle_x2 = self.scrollbar_canvas.coords(self.middle_of_handle)[2]
+        handle_center = (handle_x2 - handle_x1) / 2 + handle_x1
+
+        coord_del = self.scrollbar_canvas.winfo_width() * value - handle_center
+        self.old_coord = self.scrollbar_canvas.winfo_width() * value
+
+        self.scrollbar_canvas.move(self.middle_of_handle, coord_del, 0)
+
+    def hide(self):
+        pass
+
+    def unhide(self):
+        pass
 
 class Scrollbar_y():
     def __init__(self, parent, child):
@@ -85,6 +383,7 @@ class Scrollbar_y():
         self.bottom_of_handle = []
 
         self.old_coord = 0
+        self.is_resizing = False
 
         # Child data
         self.child.bind('<Configure>', self.resize_scrollbar)
@@ -329,6 +628,7 @@ class Timeline():
 
 class Button():
     def __init__(self, parent, name, style_level, function, args, data_type, x, y, width=125, height=20):
+        self.parent = parent
         self.default_data = DEFAULT_DATA
         self.name = name
         self.function = function
@@ -338,6 +638,14 @@ class Button():
         self.hold_state = []
         self.error = []
         self.data_type = data_type
+        self.visible = True
+        self.is_resizing = False
+
+        # Save botton position for unhiding
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
 
         if style_level == 1:
             self.button_style = style.button_1
@@ -475,10 +783,14 @@ class Button():
                     self.function()
 
     def hide(self):
-        pass
+        if not self.is_resizing:
+            self.button.place_forget()
+            self.visible = False
 
     def unhide(self):
-        pass
+        if not self.is_resizing:
+            self.button.place(x=self.x, y=self.y, width=self.width, height=self.height)
+            self.visible = True
 
     def get_data_type(self):
         return self.data_type
@@ -487,7 +799,7 @@ class Button():
         self.set(self.default_data[self.name+'State'])
 
 class TextSelection():
-    def __init__(self, parent, name, display_text, style_level, function, argument, data_type, width, height, x, y, text_percent):
+    def __init__(self, parent, name, display_text, style_level, function, argument, data_type, width, height, row, column, padx, pady, text_percent):
         self.blank = tk.PhotoImage()
 
         self.default_data = DEFAULT_DATA
@@ -501,6 +813,10 @@ class TextSelection():
         self.height = height
         self.style = []
         self.info = []
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         if style_level == 3:
             self.frame_style = style.canvas_frame_label_3
@@ -522,14 +838,14 @@ class TextSelection():
         self.selection = self.default_data[self.name+'Mode']
 
         # Frame to hold everything
-        self.ts_frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
-        self.ts_frame.place(x=x, y=y)
-        self.ts_frame.bind("<Enter>", lambda event: self.on_enter())
+        self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
+        self.frame.bind("<Enter>", lambda event: self.on_enter())
 
         self.text_width = int(width*(1.0-text_percent))
 
         # Create the text on the left
-        self.text_label = tk.Label(self.ts_frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
+        self.text_label = tk.Label(self.frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
         self.text_label.place(x=0, y=0)
 
         # Loop through the parameter modes, create a label
@@ -542,7 +858,7 @@ class TextSelection():
             m_len = self.font.measure(mode)
 
             # Create a label with the text
-            self.textselect_label[mode] = tk.Label(self.ts_frame, self.sel_off_style, text=mode, image=self.blank, compound='c', anchor='c', width=m_len, height=height)
+            self.textselect_label[mode] = tk.Label(self.frame, self.sel_off_style, text=mode, image=self.blank, compound='c', anchor='c', width=m_len, height=height)
             self.textselect_label[mode].place(x=x_spacing, y=0)
             self.textselect_label[mode].bind("<ButtonRelease-1>", lambda event, mode=mode: self.select_ui_text_selection(mode))
 
@@ -581,10 +897,14 @@ class TextSelection():
         self.select_ui_text_selection(value, request_frame)
 
     def hide(self):
-        pass
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        pass
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
     def get_data_type(self):
         return self.data_type
@@ -593,7 +913,7 @@ class TextSelection():
         self.set(self.default_data[self.name+'Mode'])
 
 class TextSelectionComboBox:
-    def __init__(self, parent, name, display_text, style_level, function, argument, data_type, width, height, x, y, text_percent, combobox_width):
+    def __init__(self, parent, name, display_text, style_level, function, argument, data_type, width, height, row, column, padx, pady, text_percent, combobox_width):
         self.blank = tk.PhotoImage()
 
         self.default_data = DEFAULT_DATA
@@ -608,6 +928,10 @@ class TextSelectionComboBox:
         self.info = []
         self.display_text = display_text + ' '
         self.selection = self.default_data[self.name + 'Mode']
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         self.styles = {
             3: (style.canvas_frame_label_3, style.text_3, style.text_selection_off_3, style.text_selection_on_3),
@@ -616,20 +940,20 @@ class TextSelectionComboBox:
 
         self.frame_style, self.text_style, self.sel_off_style, self.sel_on_style = self.styles.get(style_level)
 
-        self.ts_frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
-        self.ts_frame.place(x=x, y=y)
-        self.ts_frame.bind("<Enter>", lambda event: self.on_enter())
+        self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
+        self.frame.bind("<Enter>", lambda event: self.on_enter())
 
         self.text_width = int(width * (1.0 - text_percent))
         self.combobox_width = combobox_width
 
-        self.text_label = tk.Label(self.ts_frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
+        self.text_label = tk.Label(self.frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
         self.text_label.place(x=0, y=0)
 
         modes = self.default_data[self.name + 'Modes']
 
         self.font = ctk.CTkFont(family="Segoe UI", size=10, weight="normal")
-        self.combo_box = ctk.CTkComboBox(self.ts_frame, values=modes, command=self.select_ui_text_selection, font=self.font, dropdown_font=self.font, state="readonly", width=self.combobox_width, height=height, border_width=1, fg_color=style.main, dropdown_fg_color=style.main)
+        self.combo_box = ctk.CTkComboBox(self.frame, values=modes, command=self.select_ui_text_selection, font=self.font, dropdown_font=self.font, state="readonly", width=self.combobox_width, height=height, border_width=1, fg_color=style.main, dropdown_fg_color=style.main)
         self.combo_box.place(x=self.text_width + 10, y=0)
         self.combo_box.set(self.selection)
 
@@ -653,10 +977,14 @@ class TextSelectionComboBox:
             self.function(self.argument, self.name)
 
     def hide(self):
-        self.ts_frame.place_forget()
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        self.ts_frame.place(x=self.ts_frame.winfo_x(), y=self.ts_frame.winfo_y())
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
     def get_data_type(self):
         return self.data_type
@@ -665,7 +993,7 @@ class TextSelectionComboBox:
         self.set(self.default_data[self.name + 'Mode'])
 
 class Switch2():
-    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, toggle_x=0, toggle_width=40):
+    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, row, column, padx, pady, toggle_x=0, toggle_width=40):
         self.blank = tk.PhotoImage()
         self.default_data = DEFAULT_DATA
         # Capture inputs as instance variables
@@ -676,10 +1004,14 @@ class Switch2():
         self.data_type = argument
         self.width = width
         self.height = height
-        self.x = x
-        self.y = y
+        self.toggle_x = toggle_x
+        self.toggle_width = toggle_width
         self.style = []
         self.info = []
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         # Initial Value
         self.state = self.default_data[name+'State']
@@ -691,34 +1023,27 @@ class Switch2():
 
         self.display_text = display_text
         # Load Icons
-        self.img = Image.open(style.icon['IconOff'])
-        self.img = self.img.resize((40,40), Image.ANTIALIAS)
-        self.icon_off = ImageTk.PhotoImage(self.img)
-
-        self.img = Image.open(style.icon['IconOn'])
-        self.img = self.img.resize((40,40), Image.ANTIALIAS)
-        self.icon_on = ImageTk.PhotoImage(self.img)
+        if icon_on == None or icon_off == None:
+            load_switch_icons()
 
         # Frame to hold everything
-        self.switch_frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
-        self.switch_frame.place(x=self.x, y=self.y)
-        self.switch_frame.bind("<Enter>", lambda event: self.on_enter())
+        self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
+        self.frame.bind("<Enter>", lambda event: self.on_enter())
 
-        #toggle_width = 40
-        text_width = self.width-toggle_width
+        text_width = self.width-self.toggle_width
 
         # Toggle Switch
-        self.switch = tk.Label(self.switch_frame, style.parameter_switch_3, image=self.icon_off, width=toggle_width, height=self.height)
+        self.switch = tk.Label(self.frame, style.parameter_switch_3, image=icon_off, width=toggle_width, height=self.height)
         if self.state:
-            self.switch.configure(image=self.icon_on)
-        #self.switch.place(x=0, y=2)
-        self.switch.place(x=toggle_x, y=2)
+            self.switch.configure(image=icon_on)
+
+        self.switch.place(x=self.toggle_x, y=2)
         self.switch.bind("<ButtonRelease-1>", lambda event: self.toggle_switch(event))
 
         # Text
-        self.switch_text = tk.Label(self.switch_frame, style.parameter_switch_3, image=self.blank, compound='right', text=self.display_text, anchor='w', width=text_width, height=height-2)
-        #self.switch_text.place(x=50, y=0)
-        self.switch_text.place(x=toggle_x + toggle_width + 10, y=0)
+        self.switch_text = tk.Label(self.frame, style.parameter_switch_3, image=self.blank, compound='right', text=self.display_text, anchor='w', width=text_width, height=height-2)
+        self.switch_text.place(x=self.toggle_x + self.toggle_width + 10, y=0)
 
     def toggle_switch(self, event, set_value=None, request_frame=True):
         # flip state
@@ -728,10 +1053,10 @@ class Switch2():
             self.state = set_value
 
         if self.state:
-            self.switch.configure(image=self.icon_on)
+            self.switch.configure(image=icon_on)
 
         else:
-            self.switch.configure(image=self.icon_off)
+            self.switch.configure(image=icon_off)
 
         if request_frame:
             self.function(self.argument, self.name, use_markers=False)
@@ -744,14 +1069,14 @@ class Switch2():
             self.info.configure(text=self.default_data[self.name+'InfoText'])
 
     def hide(self):
-        self.switch_frame.place_forget()
-        self.switch.place_forget()
-        self.switch_text.place_forget()
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        self.switch_frame.place(x=self.x, y=self.y)
-        self.switch.place(x=0, y=2)
-        self.switch_text.place(x=50, y=0)
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
     def set(self, value, request_frame=True):
         self.toggle_switch(None, value, request_frame)
@@ -765,9 +1090,92 @@ class Switch2():
     def load_default(self):
         self.set(self.default_data[self.name+'State'])
 
-class Slider2():
-    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, slider_percent, entry_width=60):
+class ParamSwitch():
+    def __init__(self, parent, name, display_text, style_level, function, value, width, height, row, column, padx, pady, allow_drag_and_drop=True, toggle_x=0, toggle_width=40):
+        self.blank = tk.PhotoImage()
+        self.parent = parent
+        self.name = name
+        self.function = function
+        self.width = width
+        self.height = height
+        self.toggle_x = toggle_x
+        self.toggle_width = toggle_width
+        self.style = []
+        self.row = row
+        self.column = column
+        self.is_resizing = False
 
+        self.visible = value
+
+        if style_level == 3:
+            self.frame_style = style.canvas_frame_label_3
+            self.text_style = style.text_3
+            self.entry_style = style.entry_3
+
+        self.display_text = display_text
+
+        # Load Icons
+        if icon_on is None or icon_off is None:
+            load_switch_icons()
+
+        # Frame to hold everything
+        self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
+        self.frame.bind("<Enter>", lambda event: self.on_enter())
+
+        text_width = self.width - self.toggle_width
+
+        # Toggle Switch
+        self.switch = tk.Label(self.frame, style.parameter_switch_3, image=icon_off, width=toggle_width, height=self.height)
+        if self.visible:
+            self.switch.configure(image=icon_on)
+        self.switch.place(x=self.toggle_x, y=2)
+        self.switch.bind("<ButtonRelease-1>", lambda event: self.toggle_switch(event))
+
+        # Text
+        self.switch_text = tk.Label(self.frame, style.parameter_switch_3, image=self.blank, compound='right', text=self.display_text, anchor='w', width=text_width, height=height - 2)
+        self.switch_text.place(x=self.toggle_x + self.toggle_width + 10, y=0)
+
+        # Aggiungi un riferimento a se stesso come attributo del frame
+        self.frame.draggable_object_instance = self
+
+        # Bind per drag and drop sul testo
+        if allow_drag_and_drop:
+            self.switch_text.bind("<ButtonPress-1>", self.parent.start_drag)
+            self.switch_text.bind("<B1-Motion>", self.parent.on_drag)
+            self.switch_text.bind("<ButtonRelease-1>", self.parent.end_drag)
+
+    def toggle_switch(self, event, set_value=None, request_frame=True):
+        if set_value is None:
+            self.visible = not self.visible
+        else:
+            self.visible = set_value
+
+        if self.visible:
+            self.switch.configure(image=icon_on)
+        else:
+            self.switch.configure(image=icon_off)
+
+        if request_frame:
+            self.function(self.name, self.visible)
+
+    def on_enter(self):
+        pass
+
+    def hide(self):
+        pass
+
+    def unhide(self):
+        pass
+
+    def set(self, value, request_frame=True):
+        self.toggle_switch(None, value, request_frame)
+
+    def get(self):
+        return self.visible
+
+class Slider2():
+    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, row, column, padx, pady, slider_percent, entry_width=60):
         # self.constants = CONSTANTS
         self.default_data = DEFAULT_DATA
         self.blank = tk.PhotoImage()
@@ -777,12 +1185,14 @@ class Slider2():
         self.name = name
         self.function = function
         self.data_type = argument
-        self.x = x
-        self.y = y
         self.slider_percent = slider_percent
         self.width = width
         self.height = height
         self.info = []
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         # Initial Value
         self.amount = self.default_data[name+'Amount']
@@ -817,13 +1227,11 @@ class Slider2():
         # |--------------------width------------------|
 
         # Create a frame to hold it all
-        self.frame_x = x
-        self.frame_y = y
         self.frame_width = width
         self.frame_height = height
 
         self.frame = tk.Frame(self.parent, self.frame_style, width=self.frame_width, height=self.frame_height)
-        self.frame.place(x=self.frame_x, y=self.frame_y)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
         self.frame.bind("<Enter>", lambda event: self.on_enter())
 
         # Add the slider Label text to the frame
@@ -845,7 +1253,6 @@ class Slider2():
         self.slider.bind('<MouseWheel>', lambda e: self.update_handle(e, True))
 
         # Add the Entry to the frame
-        #self.entry_width = 60
         self.entry_width = entry_width
         self.entry_x = self.frame_width-self.entry_width
         self.entry_y = 0
@@ -942,16 +1349,14 @@ class Slider2():
         return self.amount
 
     def hide(self):
-        self.frame.place_forget()
-        self.label.place_forget()
-        self.slider.place_forget()
-        self.entry.place_forget()
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        self.frame.place(x=self.frame_x, y=self.frame_y)
-        self.label.place(x=self.txt_label_x, y=self.txt_label_y)
-        self.slider.place(x=self.slider_canvas_x, y=self.slider_canvas_y)
-        self.entry.place(x=self.entry_x, y=self.entry_y)
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
     # def save_to_file(self, filename, data):
         # with open(filename, 'w') as outfile:
@@ -964,10 +1369,7 @@ class Slider2():
         self.set(self.default_data[self.name+'Amount'])
 
 class Slider3():
-    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, x, y, slider_percent):
-
-        # self.constants = CONSTANTS
-        # self.default_data = DEFAULT_DATA
+    def __init__(self, parent, name, display_text, style_level, function, argument, width, height, row, column, padx, pady, slider_percent):
         self.blank = tk.PhotoImage()
 
         # Capture inputs as instance variables
@@ -975,12 +1377,14 @@ class Slider3():
         self.name = name
         self.function = function
         self.data_type = argument
-        self.x = x
-        self.y = y
         self.slider_percent = slider_percent
         self.width = width
         self.height = height
         self.info = []
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         # Initial Value
         self.amount = 0
@@ -1011,13 +1415,11 @@ class Slider3():
         # |--------------------width------------------|
 
         # Create a frame to hold it all
-        self.frame_x = x
-        self.frame_y = y
         self.frame_width = width
         self.frame_height = height
 
         self.frame = tk.Frame(self.parent, self.frame_style, width=self.frame_width, height=self.frame_height)
-        self.frame.place(x=self.frame_x, y=self.frame_y)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
         # self.frame.bind("<Enter>", lambda event: self.on_enter())
 
         # Add the slider Label text to the frame
@@ -1136,16 +1538,14 @@ class Slider3():
         return self.amount
 
     def hide(self):
-        self.frame.place_forget()
-        self.label.place_forget()
-        self.slider.place_forget()
-        self.entry.place_forget()
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        self.frame.place(x=self.frame_x, y=self.frame_y)
-        self.label.place(x=self.txt_label_x, y=self.txt_label_y)
-        self.slider.place(x=self.slider_canvas_x, y=self.slider_canvas_y)
-        self.entry.place(x=self.entry_x, y=self.entry_y)
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
         # def save_to_file(self, filename, data):
         # with open(filename, 'w') as outfile:
@@ -1158,7 +1558,7 @@ class Slider3():
         self.set(0)
 
 class Text_Entry():
-    def __init__(self, parent, name, display_text, style_level, function, data_type, width, height, x, y, text_percent):
+    def __init__(self, parent, name, display_text, style_level, function, data_type, width, height, row, column, padx, pady, text_percent):
         self.blank = tk.PhotoImage()
 
         self.default_data = DEFAULT_DATA
@@ -1171,6 +1571,10 @@ class Text_Entry():
         self.height = height
         self.style = []
         self.info = []
+        self.row = row
+        self.column = column
+        self.visible = True
+        self.is_resizing = False
 
         if style_level == 3:
             self.frame_style = style.canvas_frame_label_3
@@ -1191,18 +1595,18 @@ class Text_Entry():
         self.entry_text.set(self.default_data[self.name])
 
         # Frame to hold everything
-        self.ts_frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
-        self.ts_frame.place(x=x, y=y)
-        self.ts_frame.bind("<Enter>", lambda event: self.on_enter())
+        self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
+        self.frame.grid(row=row, column=column, sticky='NEWS', padx=padx, pady=pady)
+        self.frame.bind("<Enter>", lambda event: self.on_enter())
 
         self.text_width = int(width*(1.0-text_percent))
 
         # Create the text on the left
-        self.text_label = tk.Label(self.ts_frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
+        self.text_label = tk.Label(self.frame, self.text_style, image=self.blank, compound='c', text=self.display_text, anchor='e', width=self.text_width, height=height)
         self.text_label.place(x=0, y=0)
 
-        self.entry = tk.Entry(self.ts_frame, style.entry_2, textvariable=self.entry_text)
-        self.entry.place(x=self.text_width+20, y=0, width = self.width-self.text_width-50, height=15)
+        self.entry = tk.Entry(self.frame, style.entry_2, textvariable=self.entry_text)
+        self.entry.place(x=self.text_width+20, y=0, width = self.width-self.text_width-50, height=height)
         self.entry.bind("<Return>", lambda event: self.send_text(self.entry_text.get()))
 
     def send_text(self, text):
@@ -1223,17 +1627,20 @@ class Text_Entry():
         # self.select_ui_text_selection(value, request_frame)
 
     def hide(self):
-        pass
+        if not self.is_resizing:
+            self.frame.grid_remove()
+            self.visible = False
 
     def unhide(self):
-        pass
+        if not self.is_resizing:
+            self.frame.grid()
+            self.visible = True
 
     def get_data_type(self):
         return self.data_type
 
     def load_default(self):
         pass
-        # self.set(self.default_data[self.name+'Mode'])
 
 class VRAM_Indicator():
     def __init__(self, parent, style_level, width, height, x, y):
@@ -1246,6 +1653,7 @@ class VRAM_Indicator():
 
         self.used = 0
         self.total = 1
+        self.is_resizing = False
 
         if style_level == 3:
             self.frame_style = style.canvas_frame_label_3

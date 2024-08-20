@@ -202,8 +202,8 @@ class GUI(tk.Tk):
 
         #region [#131710b4]
 
-        # Keyboard Shortcuts
-        self.widget = {}
+        # Default Parameters Visibility Configuration
+        self.default_params_visibility = {}
 
         def load_shortcuts_from_json():
             try:
@@ -317,6 +317,9 @@ class GUI(tk.Tk):
             if current_state:
                 self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
                 ks_frame.grid_forget()
+                pv_frame.grid_forget()
+                self.collapse_keyboardshortcuts.deselect()
+                self.collapse_parametersvisibility.deselect()
             else:
                 self.layer['InputVideoFrame'].grid_forget()
                 v_f_frame.grid_forget()
@@ -338,7 +341,6 @@ class GUI(tk.Tk):
         def collapse_params_panel():
             current_state = self.collapse_params.get()
             if current_state:
-
                 self.layer['parameter_frame'].grid(row=0, column=2, sticky='NEWS', pady=0, padx=0)
                 self.after(10, vidupdate)
             else:
@@ -352,15 +354,39 @@ class GUI(tk.Tk):
                 ks_frame.grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
                 self.after(10, vidupdate)
                 self.layer['InputVideoFrame'].grid_forget()
+                pv_frame.grid_forget()
                 self.after(10, vidupdate)
                 self.checkbox.deselect()
+                self.collapse_parametersvisibility.deselect()
             else:
+                ks_frame.grid_forget()
+                pv_frame.grid_forget()
+                v_f_frame.grid_forget()
+                self.after(10, vidupdate)
+                self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
+                self.after(10, vidupdate)
+                self.checkbox.select()
+
+        #Parameters Visibility
+        def parameters_visibility():
+            current_state = self.collapse_parametersvisibility.get()
+            if current_state:
+                pv_frame.grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
+                self.after(10, vidupdate)
+                self.layer['InputVideoFrame'].grid_forget()
+                ks_frame.grid_forget()
+                self.after(10, vidupdate)
+                self.checkbox.deselect()
+                self.collapse_keyboardshortcuts.deselect()
+            else:
+                pv_frame.grid_forget()
                 ks_frame.grid_forget()
                 v_f_frame.grid_forget()
                 self.after(10, vidupdate)
                 self.layer['InputVideoFrame'].grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
                 self.after(10, vidupdate)
                 self.checkbox.select()
+                self.collapse_keyboardshortcuts.deselect()
 
         #endregion
 
@@ -499,6 +525,165 @@ class GUI(tk.Tk):
             ctk.CTkEntry(ks_frame, textvariable=text_vars[shortcut_name], width=50, height=15, border_width=0).place(x=180, y=y)
             y += 20
 
+        global pv_frame
+        pv_frame = GE.CTkScrollableFrame(middle_frame, allow_drag_and_drop=True, allowed_widget_type=GE.ParamSwitch, height = 42, width=250, border_width=0, fg_color=style.main, background_corner_colors=(style.main,style.main,style.main,style.main))
+        pv_frame.grid(row=0, column=0, sticky='NEWS', padx=0, pady=(0,0))
+        pv_frame.grid_forget()
+
+        def load_params_visibility_from_json(task='startup', initial_dir="."):
+            try:
+                if task == 'startup':
+                    with open("startup_parameters_visibility.json", "r") as json_file:
+                        config_data = json.load(json_file)
+                        file_name = json_file.name
+                else:
+                    with filedialog.askopenfile(mode='r', initialdir=initial_dir, filetypes=[("JSON files", "*.json"), ("All files", "*.*")]) as json_file:
+                        config_data = json.load(json_file)
+                        file_name = json_file.name
+
+                # Verifica il tipo di configurazione
+                if config_data.get("config_type") != "parameters_visibility":
+                    print(f"Error: {file_name} has an invalid configuration type!")
+                    return None
+
+                # Restituisci i parametri di configurazione
+                return config_data.get("parameters", {})
+
+            except FileNotFoundError:
+                return {}
+            except json.JSONDecodeError:
+                print(f"Error decoding JSON file: {file_name}")
+                return None
+
+        def save_params_visibility_to_json(params_visibility, initial_dir=".", default_filename="startup_parameters_visibility.json"):
+            # Aggiungi il tipo di configurazione e la versione
+            config_data = {
+                "config_type": "parameters_visibility",
+                "version": "1.0",
+                "parameters": params_visibility
+            }
+
+            save_file = filedialog.asksaveasfile(
+                mode='w',
+                initialdir=initial_dir,
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                initialfile=default_filename  # Nome file predefinito
+            )
+            if save_file:
+                with save_file:
+                    json.dump(config_data, save_file, indent=4)
+
+        # get Parameters Visibility from frame
+        def get_params_visibility_from_frame():
+            params_visibility = {}
+
+            max_row = pv_frame.scrollable_frame.grid_size()[1]  # Ottieni il numero massimo di righe
+            for row in range(max_row):
+                widgets_in_row = pv_frame.scrollable_frame.grid_slaves(row=row)
+                for widget in widgets_in_row:
+                    # Controlla se il widget è un frame che contiene un ParamSwitch
+                    if hasattr(widget, 'draggable_object_instance'):
+                        #print(f"ParamSwitch nella riga {row}: {widget.draggable_object_instance.name}, Tipo: {type(widget.draggable_object_instance).__name__}, Valore: { widget.draggable_object_instance.get()}")
+                        params_visibility[widget.draggable_object_instance.name] = widget.draggable_object_instance.get()
+
+            return params_visibility
+
+        # Create save parameters visibility function
+        def save_params_visibility():
+            # Save the current list to JSON
+            save_params_visibility_to_json(get_params_visibility_from_frame())
+
+        def remove_param_switch_widgets():
+            # Ottieni il numero massimo di righe nel frame
+            max_row = pv_frame.scrollable_frame.grid_size()[1]
+
+            for row in range(max_row):
+                # Ottieni tutti i widget nella riga corrente
+                widgets_in_row = pv_frame.scrollable_frame.grid_slaves(row=row)
+                for widget in widgets_in_row:
+                    # Controlla se il widget ha l'attributo 'draggable_object_instance'
+                    if hasattr(widget, 'draggable_object_instance'):
+                        # Distrugge il widget se ha l'attributo 'draggable_object_instance'
+                        widget.destroy()
+
+        def load_params_visibility_configuration():
+            json_file = load_params_visibility_from_json(task='manual', initial_dir=".")
+            if json_file:
+                remove_param_switch_widgets()
+
+                for widget_name, widget_instance in self.default_params_visibility.items():
+                    if widget_name not in json_file:
+                        json_file[widget_name] = True
+
+                apply_params_visibility_configuration(json_file, True)
+
+        def default_params_visibility_configuration():
+            remove_param_switch_widgets()
+            apply_params_visibility_configuration(self.default_params_visibility, True)
+
+        def apply_params_visibility_configuration(params_visibility=None, reload=False):
+            if params_visibility == None:
+                params_visibility = get_params_visibility_from_frame()
+
+            # Apply Parameters Visibility Configuration
+            padx=1
+            pady=0
+            pv_row = 2
+            row = 1
+            column = 0
+            for widget_name, widget_value in params_visibility.items():
+                if widget_name in self.widget:
+                    pv_row += 1
+                    row += 1
+
+                    # Create a ParamSwitch in the scrollable frame
+                    if reload:
+                        GE.ParamSwitch(pv_frame.scrollable_frame, widget_name, self.widget[widget_name].display_text, 3, self.update_param_visibility, widget_value, 398, 20, pv_row, 0, padx, pady, allow_drag_and_drop=True)
+
+                    # Check if the widget has a 'frame' attribute, so can be reordered
+                    if hasattr(self.widget[widget_name], 'frame'):
+                        self.widget[widget_name].frame.grid(row=row, column=column, padx=padx, pady=pady)
+
+                    # Apply visibility setting
+                    if not widget_value:
+                        self.widget[widget_name].hide()  # Ensure hide method correctly removes or hides the widget
+                    elif widget_value:
+                        self.widget[widget_name].unhide()  # Ensure unhide method correctly add or unhides the widget
+
+            # resize parameters scrollbar
+            self.static_widget['parameters_scrollbar'].resize_scrollbar(None)
+
+        # Create empty row
+        empty_row = ctk.CTkLabel(pv_frame.scrollable_frame, text="", fg_color=style.main2, height=15)
+        empty_row.grid(row=0, column=0, sticky='NS', padx=0, pady=0)
+
+        # Crea una nuova Frame per contenere i pulsanti
+        button_frame = ctk.CTkFrame(pv_frame.scrollable_frame, fg_color=style.main)
+        button_frame.grid(row=1, column=0, sticky='EW', padx=0, pady=0)
+
+        # Configura le colonne del button_frame
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
+        button_frame.grid_columnconfigure(2, weight=1)
+        button_frame.grid_columnconfigure(3, weight=1)
+
+        # Crea e posiziona i pulsanti all'interno della button_frame
+        save_pv_button = ctk.CTkButton(button_frame, text="Save", command=save_params_visibility, width=80, height=15, corner_radius=3, fg_color=style.main2, hover_color=style.main3, text_color="#FFFFE0", anchor='center')
+        save_pv_button.grid(row=0, column=0, padx=0, pady=0)
+
+        apply_pv_button = ctk.CTkButton(button_frame, text="Apply", command=lambda: apply_params_visibility_configuration(params_visibility=None, reload=False), width=80, height=15, corner_radius=3, fg_color=style.main2, hover_color=style.main3, text_color="#FFFFE0", anchor='center')
+        apply_pv_button.grid(row=0, column=1, padx=0, pady=0)
+
+        load_pv_button = ctk.CTkButton(button_frame, text="Load", command=load_params_visibility_configuration, width=80, height=15, corner_radius=3, fg_color=style.main2, hover_color=style.main3, text_color="#FFFFE0", anchor='center')
+        load_pv_button.grid(row=0, column=2, padx=0, pady=0)
+
+        default_pv_button = ctk.CTkButton(button_frame, text="Default", command=default_params_visibility_configuration, width=80, height=15, corner_radius=3, fg_color=style.main2, hover_color=style.main3, text_color="#FFFFE0", anchor='center')
+        default_pv_button.grid(row=0, column=3, padx=0, pady=0)
+
+        # Create empty row
+        empty_row2 = ctk.CTkLabel(pv_frame.scrollable_frame, text="", fg_color=style.main2, height=15)
+        empty_row2.grid(row=2, column=0, sticky='NS', padx=0, pady=0)
         #endregion
 
         # Bottom Frame
@@ -539,8 +724,12 @@ class GUI(tk.Tk):
         self.collapse_params = ctk.CTkCheckBox(self.layer['topleft'], text="Parameters Panel",text_color='#B0B0B0', command=collapse_params_panel, onvalue=True, offvalue=False, checkbox_width=18,checkbox_height=18,border_width=0,hover_color='#303030',fg_color=style.main)
         self.collapse_params.place(x=705, y=10)
         self.collapse_params.select()
+        #Button - Hide/Unhide Keyboard Shortcuts Panel
         self.collapse_keyboardshortcuts = ctk.CTkCheckBox(self.layer['topleft'], text="Keyboard Shortcuts",text_color='#B0B0B0', command=keyboard_shortcuts, onvalue=True, offvalue=False, checkbox_width=18,checkbox_height=18,border_width=0,hover_color='#303030',fg_color=style.main)
         self.collapse_keyboardshortcuts.place(x=840, y=10)
+        #Button - Hide/Unhide Parameters Visibility Panel
+        self.collapse_parametersvisibility = ctk.CTkCheckBox(self.layer['topleft'], text="Parameters Visibility",text_color='#B0B0B0', command=parameters_visibility, onvalue=True, offvalue=False, checkbox_width=18,checkbox_height=18,border_width=0,hover_color='#303030',fg_color=style.main)
+        self.collapse_parametersvisibility.place(x=985, y=10)
         #endregion
 
 ####### Middle Frame
@@ -648,7 +837,7 @@ class GUI(tk.Tk):
 
         frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=200)
         frame.grid(row=0, column=2)
-        self.widget['PreviewModeTextSel'] = GE.TextSelection(frame, 'PreviewModeTextSel', '', 2, self.set_view, True, 'control', width=200, height=20, x=0, y=0, text_percent=1)
+        self.widget['PreviewModeTextSel'] = GE.TextSelection(frame, 'PreviewModeTextSel', '', 2, self.set_view, True, 'control', width=200, height=20, row=0, column=0, padx=1, pady=0, text_percent=1)
 
       # Preview Window
         self.video = tk.Label(self.layer['preview_column'], bg='black')
@@ -751,7 +940,7 @@ class GUI(tk.Tk):
         self.found_faces_canvas.bind("<MouseWheel>", self.target_faces_mouse_wheel)
         self.found_faces_canvas.create_text(8, 45, anchor='w', fill='grey25', font=("Arial italic", 20), text=" Found Faces")
 
-        self.static_widget['20'] = GE.Separator_y(ff_frame, 111, 0)
+        self.static_widget['23'] = GE.Separator_y(ff_frame, 111, 0)
 
       # Merged Faces
         mf_frame = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_1)
@@ -779,7 +968,7 @@ class GUI(tk.Tk):
         self.merged_faces_canvas.grid_rowconfigure(0, weight=1)
         self.merged_faces_canvas.bind("<MouseWheel>", lambda event: self.merged_faces_canvas.xview_scroll(-int(event.delta/120.0), "units"))
         self.merged_faces_canvas.create_text(8, 45, anchor='w', fill='grey25', font=("Arial italic", 20), text=" Merged Faces")
-        self.static_widget['21'] = GE.Separator_y(mf_frame, 111, 0)
+        self.static_widget['24'] = GE.Separator_y(mf_frame, 111, 0)
 
     ### Parameters
         width=398
@@ -828,312 +1017,301 @@ class GUI(tk.Tk):
         self.static_widget['parameters_scrollbar'] = GE.Scrollbar_y(self.layer['parameter_scroll_canvas'], self.layer['parameters_canvas'])
 
         self.static_widget['30'] = GE.Separator_x(parameters_control_frame, 0, 41)
+
         ### Layout ###
-        top_border_delta = 25
-        bottom_border_delta = 5
-        switch_delta = 25
-        row_delta = 20
         row = 1
-        column = 160
+        column = 0
+        padx=1
+        pady=0
 
         # Providers Priority
-        self.widget['ProvidersPriorityTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'ProvidersPriorityTextSel', 'Providers Priority', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
-        row += row_delta
-        self.widget['ThreadsSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ThreadsSlider', 'Threads', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
-        row += top_border_delta
-        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
-        #
+        row = row + 1
+        self.widget['ProvidersPriorityTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'ProvidersPriorityTextSel', 'Providers Priority', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+        row = row + 1
+        self.widget['ThreadsSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ThreadsSlider', 'Threads', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+
         # Face Swapper Model
-        self.widget['FaceSwapperModelTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FaceSwapperModelTextSel', 'Face Swapper Model', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
-        row += row_delta
-        self.widget['SwapperTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SwapperTypeTextSel', 'Swapper Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
-        row += top_border_delta
-        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
-        #
+        row = row + 1
+        self.widget['FaceSwapperModelTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FaceSwapperModelTextSel', 'Face Swapper Model', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
+        row = row + 1
+        self.widget['SwapperTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SwapperTypeTextSel', 'Swapper Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
         #Webcam Max Resolution
-        self.widget['WebCamMaxResolSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
-        row += row_delta
+        row = row + 1
+        self.widget['WebCamMaxResolSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'WebCamMaxResolSel', 'Webcam Resolution', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
 
         #Webcam Max FPS
-        self.widget['WebCamMaxFPSSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxFPSSel', 'Webcam FPS', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
-        row += row_delta
+        row = row + 1
+        self.widget['WebCamMaxFPSSel'] = GE.TextSelection(self.layer['parameters_frame'], 'WebCamMaxFPSSel', 'Webcam FPS', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
         #Webcam Max Count
-        self.widget['WebCamMaxNoSlider'] = GE.Slider2(self.layer['parameters_frame'], 'WebCamMaxNoSlider', 'Max Webcams', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
-        row += row_delta
+        row = row + 1
+        self.widget['WebCamMaxNoSlider'] = GE.Slider2(self.layer['parameters_frame'], 'WebCamMaxNoSlider', 'Max Webcams', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
         #Virtual Cam
-        self.widget['VirtualCameraSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'VirtualCameraSwitch', 'Send Frames to Virtual Camera', 3, self.toggle_virtualcam, 'control', 398, 20, 1, row)
-        row += top_border_delta
-        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['VirtualCameraSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'VirtualCameraSwitch', 'Send Frames to Virtual Camera', 3, self.toggle_virtualcam, 'control', 398, 20, row, 0, padx, pady)
 
         # Restore
-        self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['RestorerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
-        row += row_delta
-        self.widget['RestorerDetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerDetTypeTextSel', 'Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72)
-        row += row_delta
-        self.widget['VQFRFidelitySlider'] = GE.Slider2(self.layer['parameters_frame'], 'VQFRFidelitySlider', 'Fidelity Ratio', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
-        row += row_delta
-        self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
-        row += top_border_delta
-        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['RestorerSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestorerSwitch', 'Restorer', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['RestorerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'RestorerTypeTextSel', 'Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
+        row = row + 1
+        self.widget['RestorerDetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RestorerDetTypeTextSel', 'Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+        row = row + 1
+        self.widget['VQFRFidelitySlider'] = GE.Slider2(self.layer['parameters_frame'], 'VQFRFidelitySlider', 'Fidelity Ratio', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+        row = row + 1
+        self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Restorer Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
         # Frame Restorer
-        self.widget['FrameEnhancerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FrameEnhancerTypeTextSel', 'Enhancer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.72, 150)
-        row += row_delta
-        self.widget['EnhancerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EnhancerSlider', 'Frame Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.72)
-        row += top_border_delta
-        self.static_widget['9'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['FrameEnhancerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FrameEnhancerTypeTextSel', 'Enhancer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
+        row = row + 1
+        self.widget['EnhancerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EnhancerSlider', 'Enhancer Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
         # Orientation
-        self.widget['OrientSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'OrientSwitch', 'Orientation', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['OrientSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OrientSlider', 'Angle', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['2'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['OrientSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'OrientSwitch', 'Orientation', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['OrientSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OrientSlider', 'Angle', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Strength
-        self.widget['StrengthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'StrengthSwitch', 'Strength', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['StrengthSlider'] = GE.Slider2(self.layer['parameters_frame'], 'StrengthSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['5'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['StrengthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'StrengthSwitch', 'Strength', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['StrengthSlider'] = GE.Slider2(self.layer['parameters_frame'], 'StrengthSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Border
-        self.widget['BorderTopSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderTopSlider', 'Top Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['BorderLeftSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderLeftSlider', 'Left Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['BorderRightSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderRightSlider', 'Right Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['BorderBottomSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderBottomSlider', 'Bottom Border Distance', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['BorderBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderBlurSlider', 'Border Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['7'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['BorderTopSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderTopSlider', 'Top Border Distance', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['BorderLeftSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderLeftSlider', 'Left Border Distance', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['BorderRightSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderRightSlider', 'Right Border Distance', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['BorderBottomSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderBottomSlider', 'Bottom Border Distance', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['BorderBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BorderBlurSlider', 'Border Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Diff
-        self.widget['DiffSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DiffSwitch', 'Differencing', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['DiffSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DiffSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['8'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['DiffSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DiffSwitch', 'Differencing', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['DiffSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DiffSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Blur
-        self.widget['BlendSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BlendSlider', 'Overall Mask Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['13'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['BlendSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BlendSlider', 'Overall Mask Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Occluder
-        self.widget['OccluderSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'OccluderSwitch', 'Occluder', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['OccluderSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OccluderSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['10'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['OccluderSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'OccluderSwitch', 'Occluder', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['OccluderSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OccluderSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Mask XSeg
-        self.widget['DFLXSegSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLXSegSwitch', 'DFL XSeg', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['DFLXSegSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DFLXSegSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['10'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['DFLXSegSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLXSegSwitch', 'DFL XSeg', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['DFLXSegSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DFLXSegSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # CLIP
-        self.widget['CLIPSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'CLIPSwitch', 'Text-Based Masking', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['CLIPTextEntry'] = GE.Text_Entry(self.layer['parameters_frame'], 'CLIPTextEntry', 'Text-Based Masking', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['CLIPSlider'] = GE.Slider2(self.layer['parameters_frame'], 'CLIPSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['12'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['CLIPSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'CLIPSwitch', 'Text-Based Masking', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['CLIPTextEntry'] = GE.Text_Entry(self.layer['parameters_frame'], 'CLIPTextEntry', 'Text', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['CLIPSlider'] = GE.Slider2(self.layer['parameters_frame'], 'CLIPSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         #Restore Eyes
-        # row+=switch_delta
-        self.widget['RestoreEyesSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreEyesSwitch', 'Restore Eyes', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['RestoreEyesSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSlider', 'Eyes Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
-        self.widget['RestoreEyesFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesFeatherSlider', 'Eyes Feather Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
-        self.widget['RestoreEyesSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSizeSlider', 'Eyes Size Factor', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
+        row = row + 1
+        self.widget['RestoreEyesSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreEyesSwitch', 'Restore Eyes', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['RestoreEyesSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSlider', 'Eyes Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesFeatherSlider', 'Eyes Feather Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSizeSlider', 'Eyes Size Factor', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesRadiusFactorXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesRadiusFactorXSlider', 'Eyes Radius Factor: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesRadiusFactorYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesRadiusFactorYSlider', 'Eyes Radius Factor: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         #Restore Mouth
-        self.widget['RestoreMouthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreMouthSwitch', 'Restore Mouth', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['RestoreMouthSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSlider', 'Mouth Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
-        self.widget['RestoreMouthFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthFeatherSlider', 'Mouth Feather Blend', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
-        self.widget['RestoreMouthSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSizeSlider', 'Mouth Size', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += switch_delta
+        row = row + 1
+        self.widget['RestoreMouthSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'RestoreMouthSwitch', 'Restore Mouth', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['RestoreMouthSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSlider', 'Mouth Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthFeatherSlider', 'Mouth Feather Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthSizeSlider', 'Mouth Size', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthRadiusFactorXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthRadiusFactorXSlider', 'Mouth Radius Factor: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthRadiusFactorYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthRadiusFactorYSlider', 'Mouth Radius Factor: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # FaceParser - Face
-        self.widget['FaceParserSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceParserSwitch', 'Face Parser', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        #Face Background
-        self.widget['FaceParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceParserSlider', 'Background', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        #Neck
-        self.widget['NeckParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NeckParserSlider', 'Neck', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row = row + 1
+        self.widget['FaceParserSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceParserSwitch', 'Face Parser', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        #Face Background & Neck
+        row = row + 1
+        self.widget['FaceParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceParserSlider', 'Background', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['NeckParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NeckParserSlider', 'Neck', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
-        row += row_delta
         #Eyebrows
-        self.widget['LeftEyeBrowParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LeftEyeBrowParserSlider', 'Left Eyebrow', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['RightEyeBrowParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RightEyeBrowParserSlider', 'Right Eyebrow', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row = row + 1
+        self.widget['LeftEyeBrowParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LeftEyeBrowParserSlider', 'Left Eyebrow', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['RightEyeBrowParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RightEyeBrowParserSlider', 'Right Eyebrow', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
-        row += row_delta
         #Eyes
-        self.widget['LeftEyeParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LeftEyeParserSlider', 'Left Eye', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['RightEyeParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RightEyeParserSlider', 'Right Eye', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60, 40)
+        row = row + 1
+        self.widget['LeftEyeParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LeftEyeParserSlider', 'Left Eye', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['RightEyeParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RightEyeParserSlider', 'Right Eye', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
-        row += row_delta
         #Nose and Mouth
-        self.widget['NoseParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseParserSlider', 'Nose', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60,40)
-        self.widget['MouthParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthParserSlider', 'Mouth', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60,40)
-
-        row += row_delta
+        row = row + 1
+        self.widget['NoseParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseParserSlider', 'Nose', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62,40)
+        row = row + 1
+        self.widget['MouthParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthParserSlider', 'Mouth', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62,40)
 
         #Lips
-        self.widget['UpperLipParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'UpperLipParserSlider', 'Upper Lip', 3, self.update_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['LowerLipParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LowerLipParserSlider', 'Lower Lip', 3, self.update_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += top_border_delta
-
-        self.static_widget['12'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['UpperLipParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'UpperLipParserSlider', 'Upper Lip', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['LowerLipParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LowerLipParserSlider', 'Lower Lip', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
         # Color Adjustments
-        self.widget['ColorSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'ColorSwitch', 'Color Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['ColorRedSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorRedSlider', 'Red', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorGreenSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorGreenSlider', 'Green', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorBlueSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorBlueSlider', 'Blue', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorBrightSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorBrightSlider', 'Brightness', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorContrastSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorContrastSlider', 'Contrast', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorSaturationSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorSaturationSlider', 'Saturation', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorSharpnessSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorSharpnessSlider', 'Sharpness', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorHueSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorHueSlider', 'Hue', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ColorGammaSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorGammaSlider', 'Gamma', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['6'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['ColorSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'ColorSwitch', 'Color Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['ColorRedSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorRedSlider', 'Red', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorGreenSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorGreenSlider', 'Green', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorBlueSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorBlueSlider', 'Blue', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorBrightSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorBrightSlider', 'Brightness', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorContrastSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorContrastSlider', 'Contrast', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorSaturationSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorSaturationSlider', 'Saturation', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorSharpnessSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorSharpnessSlider', 'Sharpness', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorHueSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorHueSlider', 'Hue', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ColorGammaSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorGammaSlider', 'Gamma', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # KPS Adjustment and scaling
-        self.widget['FaceAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceAdjSwitch', 'Input Face Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['KPSXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSXSlider', 'KPS - X', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['KPSYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSYSlider', 'KPS - Y', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['KPSScaleSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSScaleSlider', 'KPS - Scale', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['FaceScaleSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceScaleSlider', 'Face Scale', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['FaceAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceAdjSwitch', 'Input Face Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['KPSXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSXSlider', 'KPS - X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['KPSYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSYSlider', 'KPS - Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['KPSScaleSlider'] = GE.Slider2(self.layer['parameters_frame'], 'KPSScaleSlider', 'KPS - Scale', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['FaceScaleSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceScaleSlider', 'Face Scale', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Face Likeness
-        self.widget['FaceLikenessSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceLikenessSwitch', 'Face Likeness', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += row_delta
-        self.widget['FaceLikenessFactorSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceLikenessFactorSlider', 'Factor', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
-        #
+        row = row + 1
+        self.widget['FaceLikenessSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceLikenessSwitch', 'Face Likeness', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['FaceLikenessFactorSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceLikenessFactorSlider', 'Factor', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Threshhold
-        self.widget['ThresholdSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ThresholdSlider', 'Similarity Threshhold', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += top_border_delta
-        self.static_widget['3'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['ThresholdSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ThresholdSlider', 'Similarity Threshhold', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Cats and Dogs
-        self.widget['DetectTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62, 150)
-        row += row_delta
-        self.widget['DetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
+        row = row + 1
+        self.widget['DetectTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'DetectTypeTextSel', 'Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.62, 150)
+        row = row + 1
+        self.widget['DetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DetectScoreSlider', 'Detect Score', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Similarity
-        row += row_delta
-        self.widget['SimilarityTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SimilarityTypeTextSel', 'Similarity Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
-        #
+        row = row + 1
+        self.widget['SimilarityTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'SimilarityTypeTextSel', 'Similarity Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Auto Rotation
-        row += switch_delta
-        self.widget['AutoRotationSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'AutoRotationSwitch', 'Auto Rotation', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += top_border_delta
-        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
-        #
+        row = row + 1
+        self.widget['AutoRotationSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'AutoRotationSwitch', 'Auto Rotation', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+
         # Landmarks Detection
-        self.widget['LandmarksDetectionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksDetectionAdjSwitch', 'Landmarks Detection Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['LandmarksAlignModeFromPointsSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksAlignModeFromPointsSwitch', 'From Points', 3, self.update_data, 'parameter', 398, 20, 1, row, 30, 40)
-        row += switch_delta
-        self.widget['LandmarksDetectTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'LandmarksDetectTypeTextSel', 'Landmarks Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62, 150)
-        row += row_delta
-        self.widget['LandmarksDetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LandmarksDetectScoreSlider', 'Landmarks Detect Score', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['ShowLandmarksSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'ShowLandmarksSwitch', 'Show Landmarks', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += top_border_delta
-        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
+        row = row + 1
+        self.widget['LandmarksDetectionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksDetectionAdjSwitch', 'Landmarks Detection Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['LandmarksAlignModeFromPointsSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksAlignModeFromPointsSwitch', 'From Points', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 30, 40)
+        row = row + 1
+        self.widget['LandmarksDetectTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'LandmarksDetectTypeTextSel', 'Landmarks Detection Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.62, 150)
+        row = row + 1
+        self.widget['LandmarksDetectScoreSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LandmarksDetectScoreSlider', 'Landmarks Detect Score', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['ShowLandmarksSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'ShowLandmarksSwitch', 'Show Landmarks', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
 
         # Face Landmarks Position
-        self.widget['LandmarksPositionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksPositionAdjSwitch', 'Landmarks Position Adjustments', 3, self.update_data, 'parameter', 398, 20, 1, row)
-        row += switch_delta
-        self.widget['FaceIDSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceIDSlider', 'Face ID: ', 3, self.update_face_landmarks_data, 'parameter', 220, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['EyeLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftXSlider', 'Eye Left:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['EyeLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += row_delta
-        self.widget['EyeRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightXSlider', 'Eye Right:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['EyeRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += row_delta
-        self.widget['NoseXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseXSlider', 'Nose:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['NoseYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += row_delta
-        self.widget['MouthLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftXSlider', 'Mouth Left:   X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.60, 40)
-        self.widget['MouthLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += row_delta
-        self.widget['MouthRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightXSlider', 'Mouth Right: X', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 1, row, 0.59, 40)
-        self.widget['MouthRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightYSlider', 'Y', 3, self.update_face_landmarks_data, 'parameter', 200, 20, 200, row, 0.60, 40)
-        row += top_border_delta
-        self.static_widget['4'] = GE.Separator_x(self.layer['parameters_frame'], 0, row)
-        row += bottom_border_delta
-        #
+        row = row + 1
+        self.widget['LandmarksPositionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksPositionAdjSwitch', 'Landmarks Position Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['FaceIDSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceIDSlider', 'Face ID: ', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['EyeLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftXSlider', 'Left Eye:   X', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['EyeLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeLeftYSlider', 'Left Eye:   Y', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['EyeRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightXSlider', 'Right Eye:   X', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['EyeRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'EyeRightYSlider', 'Right Eye:   Y', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['NoseXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseXSlider', 'Nose:   X', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['NoseYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoseYSlider', 'Nose:   Y', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['MouthLeftXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftXSlider', 'Left Mouth:   X', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['MouthLeftYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthLeftYSlider', 'Left Mouth:   Y', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['MouthRightXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightXSlider', 'Right Mouth:   X', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['MouthRightYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'MouthRightYSlider', 'Right Mouth:   Y', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
-        self.widget['RecordTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RecordTypeTextSel', 'Record Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['VideoQualSlider'] = GE.Slider2(self.layer['parameters_frame'], 'VideoQualSlider', 'FFMPEG Quality', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['AudioSpeedSlider'] = GE.Slider2(self.layer['parameters_frame'], 'AudioSpeedSlider', 'Audio Playback Speed', 3, self.update_data, 'parameter', 398, 20, 1, row, 0.62)
-        row += row_delta
-        self.widget['MergeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'MergeTextSel', 'Merge Math', 3, self.select_input_faces, 'merge', '', 398, 20, 1, row, 0.62)
+        row = row + 1
+        self.widget['RecordTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'RecordTypeTextSel', 'Record Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['VideoQualSlider'] = GE.Slider2(self.layer['parameters_frame'], 'VideoQualSlider', 'FFMPEG Quality', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['AudioSpeedSlider'] = GE.Slider2(self.layer['parameters_frame'], 'AudioSpeedSlider', 'Audio Playback Speed', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['MergeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'MergeTextSel', 'Merge Math', 3, self.select_input_faces, 'merge', '', 398, 20, row, 0, padx, pady, 0.62)
+
+        # Load saved Parameters Visibility Configuration from Json file
+        params_visibility = load_params_visibility_from_json()
+        if params_visibility == None:
+            params_visibility = {}
+
+        # Check for all widgets not in saved Parameters Visibility Configuration and add them if missing
+        for widget_name, widget_instance in self.widget.items():
+            if widget_instance.parent == self.layer['parameters_frame']:
+                self.default_params_visibility[widget_name] = True
+                if widget_name not in params_visibility:
+                    params_visibility[widget_name] = True
+
+        # Apply Parameters Visibility Configuration
+        apply_params_visibility_configuration(params_visibility, True)
 
     ### Other
         self.layer['tooltip_frame'] = tk.Frame(self.layer['parameter_frame'], style.canvas_frame_label_3, height=80)
         self.layer['tooltip_frame'].grid(row=2, column=0, columnspan=2, sticky='NEWS', padx=0, pady=0)
         self.layer['tooltip_label'] = tk.Label(self.layer['tooltip_frame'], style.info_label, wraplength=width-10, image=self.blank, compound='left', height=80, width=width-10)
         self.layer['tooltip_label'].place(x=5, y=5)
-        self.static_widget['13'] = GE.Separator_x(self.layer['tooltip_frame'], 0, 0)
+        self.static_widget['22'] = GE.Separator_x(self.layer['tooltip_frame'], 0, 0)
+
  ######### FaceLab
 
         self.layer['facelab_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
@@ -1150,20 +1328,7 @@ class GUI(tk.Tk):
         self.layer['facelab_scroll_canvas'].grid_columnconfigure(0, weight=1)
 
         self.static_widget['facelab_scrollbar'] =GE.Scrollbar_y(self.layer['facelab_scroll_canvas'] , self.layer['facelab_canvas'])
-        # row_delta = 20
-        # row = 1
-        # for i in range(512):
-        #     temp_str = 'emb_vec_'+str(i)
-        #     self.widget[temp_str] = GE.Slider3(self.layer['facelab_frame'], 'emb_vec_'+str(i), str(i), 3, self.adjust_embedding, i, 398, 20, 1, row, 0.62)
-        #     row += row_delta
 
-        ### Layout ###
-        top_border_delta = 25
-        bottom_border_delta = 5
-        switch_delta = 25
-        row_delta = 20
-        row = 1
-        column = 160
  ######### Options
 
         self.status_left_label = tk.Label(bottom_frame, style.donate_1, cursor="hand2", text=" Questions/Help/Discussions (Discord)")
@@ -1263,6 +1428,16 @@ class GUI(tk.Tk):
             self.add_action('get_requested_video_frame', self.video_slider.get())
         else:
             self.add_action('get_requested_video_frame_without_markers', self.video_slider.get())
+
+    def update_param_visibility(self, name, visible):
+        if name in self.widget:
+            if visible:
+                self.widget[name].unhide()
+            else:
+                self.widget[name].hide()
+
+        # resize parameters scrollbar
+        self.static_widget['parameters_scrollbar'].resize_scrollbar(None)
 
     def callback(self, url):
         webbrowser.open_new_tab(url)
@@ -1481,23 +1656,30 @@ class GUI(tk.Tk):
 
         # Check for a user parameters file and load if present
         try:
-            parameters_json_file = open("saved_parameters.json", "r")
+            parameters_json_file = open("startup_parameters.json", "r")
         except:
             pass
         else:
             temp = json.load(parameters_json_file)
             parameters_json_file.close()
-            for key, value in self.parameters.items():
-                try:
-                    self.parameters[key] = temp[key]
-                    if key == "ProvidersPriorityTextSel":
-                        self.models.switch_providers_priority(temp[key])
-                except KeyError:
-                    pass
 
-              # Update the UI
-            for key, value in self.parameters.items():
-                self.widget[key].set(value, request_frame=False)
+            # Verifica il tipo di configurazione
+            if temp.get("config_type") == "parameters":
+                # Carica i parametri
+                temp = temp.get("parameters", {})
+                for key, value in self.parameters.items():
+                    try:
+                        self.parameters[key] = temp[key]
+                        if key == "ProvidersPriorityTextSel":
+                            self.models.switch_providers_priority(temp[key])
+                    except KeyError:
+                        pass
+
+                  # Update the UI
+                for key, value in self.parameters.items():
+                    self.widget[key].set(value, request_frame=False)
+            else:
+                print("Error: startup_parameters.json has an invalid configuration type!")
 
         self.add_action('parameters', self.parameters)
         self.add_action('control', self.control)
@@ -1936,7 +2118,8 @@ class GUI(tk.Tk):
                 self.target_media_buttons[i].bind("<MouseWheel>", self.target_videos_mouse_wheel)
                 self.target_media_canvas.create_window((i%2)*delx, (i//2)*dely, window = self.target_media_buttons[i], anchor='nw')
 
-            self.target_media_canvas.configure(scrollregion = self.target_media_canvas.bbox("all"))
+            #self.target_media_canvas.configure(scrollregion = self.target_media_canvas.bbox("all"))
+            self.static_widget['input_videos_scrollbar'].resize_scrollbar(None)
 
         elif self.widget['PreviewModeTextSel'].get()=='Video':#videos
 
@@ -2064,9 +2247,13 @@ class GUI(tk.Tk):
             # Resize image in video window
             self.resize_image()
             for k, v in self.widget.items():
+                v.is_resizing = True
                 v.hide()
+                v.is_resizing = False
             for k, v in self.static_widget.items():
+                v.is_resizing = True
                 v.hide()
+                v.is_resizing = False
 
             # Check if window has stopped changing
             if self.winfo_geometry() != self.window_last_change:
@@ -2075,9 +2262,13 @@ class GUI(tk.Tk):
             # The window has stopped changing
             else:
                 for k, v in self.widget.items():
+                    v.is_resizing = True
                     v.unhide()
+                    v.is_resizing = False
                 for k, v in self.static_widget.items():
+                    v.is_resizing = True
                     v.unhide()
+                    v.is_resizing = False
                 # Update json
                 str1 = self.winfo_geometry().split('x')
                 str2 = str1[1].split('+')
@@ -2514,7 +2705,7 @@ class GUI(tk.Tk):
                         "UpperLipParserSlider": value // 2 if value > 0 else 8,
                         "LowerLipParserSlider": value // 2 if value > 0 else 8
                     # Only update if these keys didn't exist in the in loaded parameters
-                    } if not {"UpperLipParserSlider", "LowerLipParserSlider"} & loaded_marker.keys() else { 
+                    } if not {"UpperLipParserSlider", "LowerLipParserSlider"} & loaded_marker.keys() else {
                         # Otherwise we still need to give a value to the key otherwise it will not be loaded.
                         "MouthParserSlider": value,
                     }
@@ -2628,48 +2819,68 @@ class GUI(tk.Tk):
         self.add_action('control', self.control)
         self.add_action('get_requested_video_frame', self.video_slider.get())
 
-    def parameter_io(self, task):
-        initial_dir = os.getcwd()  # Get the current working directory
-
-        if task=='save':
-            save_file = filedialog.asksaveasfile(mode='w', initialdir=initial_dir,  defaultextension=".json", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+    def parameter_io(self, task, initial_dir="."):
+        if task == 'save':
+            save_file = filedialog.asksaveasfile(mode='w', initialdir=initial_dir, initialfile="startup_parameters.json", defaultextension=".json", filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
             if save_file:
-                json.dump(self.parameters, save_file)
+                # Aggiungi config_type e version
+                config_data = {
+                    "config_type": "parameters",
+                    "version": "1.0",
+                    "parameters": self.parameters
+                }
+                json.dump(config_data, save_file, indent=4)
                 save_file.close()
 
-        elif task=='load':
+        elif task == 'load':
             try:
                 load_file = filedialog.askopenfile(mode='r', initialdir=initial_dir, filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+                if load_file:
+                    config_data = json.load(load_file)
+                    file_name = load_file.name
+                    load_file.close()
+
+                    # Verifica il tipo di configurazione
+                    if config_data.get("config_type") != "parameters":
+                        print(f"Error: {file_name} has an invalid configuration type!")
+                        return
+
+                    # Carica i parametri
+                    self.parameters = config_data.get("parameters", {})
+
+                    # Update the UI
+                    self.update_ui_with_parameters()
+
+                    # Log the actions
+                    self.add_action('parameters', self.parameters)
+                    self.add_action('control', self.control)
+                    self.add_action('get_requested_video_frame', self.video_slider.get())
+
             except FileNotFoundError:
                 print('No save file created yet!')
-            else:
-                if not load_file:
-                    return
+            except json.JSONDecodeError:
+                print('Error decoding JSON file. Please check the file format.')
 
-                # Load the file and save it to parameters
-                self.parameters = json.load(load_file)
-                load_file.close()
+        elif task == 'default':
+            # Update the UI with default values
+            self.load_default_parameters()
 
-                # Update the UI
-                for key, value in self.parameters.items():
-                    self.widget[key].set(value, request_frame=False)
-                    if key == "ProvidersPriorityTextSel":
-                        self.models.switch_providers_priority(value)
-                        self.models.delete_models()
-                        torch.cuda.empty_cache()
-
+            # Log the actions
             self.add_action('parameters', self.parameters)
             self.add_action('control', self.control)
             self.add_action('get_requested_video_frame', self.video_slider.get())
 
-        elif task=='default':
-            # Update the UI
-            for key, value in self.parameters.items():
-                self.widget[key].load_default()
+    def update_ui_with_parameters(self):
+        for key, value in self.parameters.items():
+            self.widget[key].set(value, request_frame=False)
+            if key == "ProvidersPriorityTextSel":
+                self.models.switch_providers_priority(value)
+                self.models.delete_models()
+                torch.cuda.empty_cache()
 
-            self.add_action('parameters', self.parameters)
-            self.add_action('control', self.control)
-            self.add_action('get_requested_video_frame', self.video_slider.get())
+    def load_default_parameters(self):
+        for key, value in self.parameters.items():
+            self.widget[key].load_default()
 
     def findCosineDistance2(self, vector1, vector2):
         cos_dist = 1.0 - np.dot(vector1, vector2)/(np.linalg.norm(vector1)*np.linalg.norm(vector2)) # 2..0

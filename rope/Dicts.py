@@ -454,6 +454,18 @@ DEFAULT_DATA = {
 'RestoreEyesFeatherSliderMax':                  100,
 'RestoreEyesFeatherSliderMin':                  1,
 
+'RestoreEyesRadiusFactorXSliderAmount':      1.0,
+'RestoreEyesRadiusFactorXSliderInc':         0.1,
+'RestoreEyesRadiusFactorXSliderInfoText':    'X EYES RADIUS FACTOR :\nThese parameters determine the shape of the mask. If both are equal to 1.0, the mask will be circular. If either one is greater or less than 1.0, the mask will become oval, stretching or shrinking along the corresponding direction.',
+'RestoreEyesRadiusFactorXSliderMax':         3.0,
+'RestoreEyesRadiusFactorXSliderMin':         0.3,
+
+'RestoreEyesRadiusFactorYSliderAmount':      1.0,
+'RestoreEyesRadiusFactorYSliderInc':         0.1,
+'RestoreEyesRadiusFactorYSliderInfoText':    'Y EYES RADIUS FACTOR :\nThese parameters determine the shape of the mask. If both are equal to 1.0, the mask will be circular. If either one is greater or less than 1.0, the mask will become oval, stretching or shrinking along the corresponding direction.',
+'RestoreEyesRadiusFactorYSliderMax':         3.0,
+'RestoreEyesRadiusFactorYSliderMin':         0.3,
+
 'RestoreMouthSliderAmount':               50,
 'RestoreMouthSliderInc':                  1,
 'RestoreMouthSliderInfoText':             'MOUTH BLEND :\nIncrease this to show more of the swapped Mouth. Decrease it to show more of the original Mouth',
@@ -471,6 +483,18 @@ DEFAULT_DATA = {
 'RestoreMouthFeatherSliderInfoText':             'MOUTH FEATHER BLEND :\nAdjust the border of Mouth blending. Increase this to show more of the original Mouth. Decrease this to show more of the swapped Mouth',
 'RestoreMouthFeatherSliderMax':                  100,
 'RestoreMouthFeatherSliderMin':                  1,
+
+'RestoreMouthRadiusFactorXSliderAmount':      1.0,
+'RestoreMouthRadiusFactorXSliderInc':         0.1,
+'RestoreMouthRadiusFactorXSliderInfoText':    'X MOUTH RADIUS FACTOR :\nThese parameters determine the shape of the mask. If both are equal to 1.0, the mask will be circular. If either one is greater or less than 1.0, the mask will become oval, stretching or shrinking along the corresponding direction.',
+'RestoreMouthRadiusFactorXSliderMax':         3.0,
+'RestoreMouthRadiusFactorXSliderMin':         0.3,
+
+'RestoreMouthRadiusFactorYSliderAmount':      1.0,
+'RestoreMouthRadiusFactorYSliderInc':         0.1,
+'RestoreMouthRadiusFactorYSliderInfoText':    'Y MOUTH RADIUS FACTOR :\nThese parameters determine the shape of the mask. If both are equal to 1.0, the mask will be circular. If either one is greater or less than 1.0, the mask will become oval, stretching or shrinking along the corresponding direction.',
+'RestoreMouthRadiusFactorYSliderMax':         3.0,
+'RestoreMouthRadiusFactorYSliderMin':         0.3,
 
 'OccluderSliderAmount':             0,
 'OccluderSliderInc':                1,
