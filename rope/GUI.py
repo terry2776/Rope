@@ -1669,9 +1669,11 @@ class GUI(tk.Tk):
                 temp = temp.get("parameters", {})
                 for key, value in self.parameters.items():
                     try:
-                        self.parameters[key] = temp[key]
-                        if key == "ProvidersPriorityTextSel":
-                            self.models.switch_providers_priority(temp[key])
+                        # Do not load parameter that doesn't exist in widgets
+                        if key in self.parameters:
+                            self.parameters[key] = temp[key]
+                            if key == "ProvidersPriorityTextSel":
+                                self.models.switch_providers_priority(temp[key])
                     except KeyError:
                         pass
 
@@ -2845,8 +2847,11 @@ class GUI(tk.Tk):
                         print(f"Error: {file_name} has an invalid configuration type!")
                         return
 
-                    # Carica i parametri
-                    self.parameters = config_data.get("parameters", {})
+                    # Load parameters from json file and assign them only if exist
+                    temp = config_data.get("parameters", {})
+                    for key, value in temp.items():
+                        if key in self.parameters:
+                            self.parameters[key] = value
 
                     # Update the UI
                     self.update_ui_with_parameters()
