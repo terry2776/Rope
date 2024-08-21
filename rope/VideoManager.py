@@ -1444,10 +1444,8 @@ class VideoManager():
 
     # @profile
     def apply_face_parser(self, img, parameters):
-
         # atts = [1 'skin', 2 'l_brow', 3 'r_brow', 4 'l_eye', 5 'r_eye', 6 'eye_g', 7 'l_ear', 8 'r_ear', 9 'ear_r', 10 'nose', 11 'mouth', 12 'u_lip', 13 'l_lip', 14 'neck', 15 'neck_l', 16 'cloth', 17 'hair', 18 'hat']
         FaceAmount = parameters["FaceParserSlider"]
-        outpred = torch.ones((512,512), dtype=torch.float32, device='cuda').contiguous()
 
         img = torch.div(img, 255)
         img = v2.functional.normalize(img, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
@@ -1531,59 +1529,8 @@ class VideoManager():
         out_parse = bg_parse
         for face_parse in face_parses:
             out_parse = torch.mul(out_parse, face_parse)
-        # out_parse = torch.mul(out_parse, left_eye_parse)
+
         return out_parse
-
-    def apply_bg_face_parser(self, img, FaceParserAmount):
-
-        # atts = [1 'skin', 2 'l_brow', 3 'r_brow', 4 'l_eye', 5 'r_eye', 6 'eye_g', 7 'l_ear', 8 'r_ear', 9 'ear_r', 10 'nose', 11 'mouth', 12 'u_lip', 13 'l_lip', 14 'neck', 15 'neck_l', 16 'cloth', 17 'hair', 18 'hat']
-        # out = np.ones((512, 512), dtype=np.float32)
-
-        outpred = torch.ones((512,512), dtype=torch.float32, device='cuda').contiguous()
-
-        # turn mouth parser off at 0 so someone can just use the mouth parser
-        if FaceParserAmount != 0:
-            img = torch.div(img, 255)
-            img = v2.functional.normalize(img, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-            img = torch.reshape(img, (1, 3, 512, 512))
-            outpred = torch.empty((1,19,512,512), dtype=torch.float32, device=device).contiguous()
-
-            self.models.run_faceparser(img, outpred)
-
-            outpred = torch.squeeze(outpred)
-            outpred = torch.argmax(outpred, 0)
-
-            test = torch.tensor([ 0, 14, 15, 16, 17, 18], device=device)
-            outpred = torch.isin(outpred, test)
-            outpred = torch.clamp(~outpred, 0, 1).type(torch.float32)
-            outpred = torch.reshape(outpred, (1,1,512,512))
-
-            if FaceParserAmount >0:
-                kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=device)
-
-                for i in range(int(FaceParserAmount)):
-                    outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
-                    outpred = torch.clamp(outpred, 0, 1)
-
-                outpred = torch.squeeze(outpred)
-
-            if FaceParserAmount <0:
-                outpred = torch.neg(outpred)
-                outpred = torch.add(outpred, 1)
-
-                kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=device)
-
-                for i in range(int(-FaceParserAmount)):
-                    outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
-                    outpred = torch.clamp(outpred, 0, 1)
-
-                outpred = torch.squeeze(outpred)
-                outpred = torch.neg(outpred)
-                outpred = torch.add(outpred, 1)
-
-        outpred = torch.reshape(outpred, (1, 512, 512))
-
-        return outpred
 
     def apply_restorer(self, swapped_face_upscaled, parameters):
         temp = swapped_face_upscaled
@@ -1719,10 +1666,6 @@ class VideoManager():
         self.resnet_model = []
         self.detection_model = []
         self.recognition_model = []
-
-        # test = swap.permute(1, 2, 0)
-        # test = test.cpu().numpy()
-        # cv2.imwrite('2.jpg', test)
 
     def soft_oval_mask(self, height, width, center, radius_x, radius_y, feather_radius=None):
         """
