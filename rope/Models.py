@@ -179,6 +179,8 @@ class Models():
                 min_sizes = [[16, 32], [64, 128], [256, 512]]
                 steps = [8, 16, 32]
                 image_size = 512
+                # re-initialize self.anchors due to clear_mem function
+                self.anchors  = []
 
                 for k, f in enumerate(feature_maps):
                     min_size_array = min_sizes[k]
@@ -2696,6 +2698,8 @@ class Models():
             min_sizes = [[16, 32], [64, 128], [256, 512]]
             steps = [8, 16, 32]
             image_size = 512
+            # re-initialize self.anchors due to clear_mem function
+            self.anchors  = []
 
             for k, f in enumerate(feature_maps):
                 min_size_array = min_sizes[k]
