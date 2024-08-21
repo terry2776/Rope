@@ -1549,7 +1549,8 @@ class VideoManager():
             elif parameters['RestorerDetTypeTextSel'] == 'Reference':
                 try:
                     dst = self.models.resnet50(swapped_face_upscaled, score=parameters['DetectScoreSlider']/100.0)
-                except:
+                except Exception as e:
+                    print(f"exception: {e}")
                     return swapped_face_upscaled
 
             tform = trans.SimilarityTransform()

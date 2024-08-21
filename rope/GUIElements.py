@@ -473,9 +473,11 @@ class Scrollbar_y():
         pass
 
 class Timeline():
-    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action):
+    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action, after, after_cancel):
         self.parent = parent
         self.add_action = add_action
+        self.after = after
+        self.after_cancel = after_cancel
         self.temp_toggle_swapper = temp_toggle_swapper
         self.temp_toggle_enhancer = temp_toggle_enhancer
 
@@ -494,6 +496,8 @@ class Timeline():
         self.handle = []
         self.slider_left = []
         self.slider_right = []
+
+        self.slider_delay_id = ''
 
         # Event trigget for window resize
         self.parent.bind('<Configure>', self.window_resize)
@@ -528,7 +532,7 @@ class Timeline():
         line_loc = self.pos2coord(self.last_position)
 
         line_height = 8
-        line_width = 1.5
+        line_width = 8
         line_x1 = line_loc-line_width
         line_y1 = slider_center -line_height
         line_x2 = line_loc+line_width
@@ -590,7 +594,9 @@ class Timeline():
             self.slider.move(self.handle, self.pos2coord(position) - self.pos2coord(self.last_position), 0)
 
             if requested:
-                self.add_action("get_requested_video_frame", position)
+                if len(self.slider_delay_id) > 0:
+                    self.after_cancel(self.slider_delay_id)
+                self.slider_delay_id = self.after(10, self.add_action, "get_requested_video_frame", position)
 
             # Save for next time
             self.last_position = position
