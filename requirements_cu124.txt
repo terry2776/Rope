@@ -1,0 +1,19 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+numpy==1.26.4
+opencv-python==4.10.0.84
+scikit-image==0.21.0
+tk==0.1.0
+pillow==9.5.0
+onnx==1.16.1
+protobuf==4.23.2
+torch --index-url https://download.pytorch.org/whl/cu124
+torchvision --index-url https://download.pytorch.org/whl/cu124
+torchaudio --index-url https://download.pytorch.org/whl/cu124
+tqdm
+ftfy
+regex
+customtkinter
+pyvirtualcam==0.11.1
+psutil==6.0.0
+onnxruntime-gpu==1.19.0
