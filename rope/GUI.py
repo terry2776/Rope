@@ -850,7 +850,7 @@ class GUI(tk.Tk):
     # Videos
       # Timeline
         # Slider
-        self.layer['slider_frame'] = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_2, height=20)
+        self.layer['slider_frame'] = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_2, height=50)
         self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
         self.video_slider = GE.Timeline(self.layer['slider_frame'], self.widget, self.temp_toggle_swapper,
                                         self.temp_toggle_enhancer, self.add_action, self.after, self.after_cancel)
@@ -2268,6 +2268,9 @@ class GUI(tk.Tk):
 
     def set_video_slider_length(self, video_length):
         self.video_slider.set_length(video_length)
+
+    def set_video_slider_fps(self, fps):
+        self.video_slider.set_fps(fps)
 
     def findCosineDistance(self, vector1, vector2):
         vector1 = vector1.ravel()

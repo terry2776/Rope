@@ -56,6 +56,7 @@ def handle_action(action, vm, state):
         "clear_faces_stop_swap": lambda _: (gui.clear_faces(), gui.toggle_swapper(0)),
         "clear_stop_enhance": lambda _: gui.toggle_enhancer(0),
         "set_slider_length": gui.set_video_slider_length,
+        "set_slider_fps": gui.set_video_slider_fps,
         "update_markers_canvas": gui.update_markers_canvas,
         "face_landmarks": lambda value: setattr(vm, 'face_landmarks', value),
         "function": lambda func: eval(func),

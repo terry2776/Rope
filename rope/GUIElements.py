@@ -499,6 +499,10 @@ class Timeline():
 
         self.slider_delay_id = ''
 
+        self.fps = 0
+        self.time_elapsed_string = tk.StringVar()
+        self.time_elapsed_string.set("00:00:00")
+
         # Event trigget for window resize
         self.parent.bind('<Configure>', self.window_resize)
 
@@ -515,12 +519,18 @@ class Timeline():
         self.entry = tk.Entry(self.parent, style.entry_3, textvariable=self.entry_string)
         self.entry.bind('<Return>', lambda event: self.entry_input(event))
 
+        # Add the Time Entry to the frame
+        self.time_width = 40
+        self.time_entry = tk.Entry(self.parent, style.entry_3, textvariable=self.time_elapsed_string, width=8)
+        self.time_entry.bind('<Return>', lambda event: self.time_entry_input(event))
+
     def draw_timeline(self):
         self.slider.delete('all')
 
         # Configure widths and placements
         self.slider.configure(width=self.frame_length)
         self.entry.place(x=self.parent.winfo_width()-self.counter_width, y=0)
+        self.time_entry.place(x=(self.parent.winfo_width()-self.counter_width-self.time_width-40) / 2, y=25)
 
         # Draw the slider
         slider_pad = 20
@@ -603,6 +613,7 @@ class Timeline():
 
             if also_update_entry:
                 self.entry_string.set(str(position))
+                self.update_time_elapsed(position)
 
     def entry_input(self, event):
     # event.char
@@ -610,6 +621,48 @@ class Timeline():
         try:
             input_num = float(self.entry_string.get())
             self.update_timeline_handle(input_num, False)
+        except:
+            return
+
+    def time_entry_input(self, event):
+    # event.char
+        self.time_entry.update()
+        try:
+            time_string = self.time_elapsed_string.get()
+
+            # Divide la stringa in ore, minuti e secondi
+            hours, minutes, seconds = map(int, time_string.split(':'))
+
+            # Verifica che le ore, i minuti e i secondi siano nei range corretti
+            if not (0 <= hours <= 23) or not (0 <= minutes <= 59) or not (0 <= seconds <= 59):
+                return
+
+            # get total seconds
+            total_seconds = hours * 3600 + minutes * 60 + seconds
+
+            # get the current frame
+            current_frame = float(total_seconds * self.fps)
+
+            self.update_timeline_handle(current_frame, False)
+
+            # sync with entry_string
+            self.entry_string.set(str(self.last_position))
+        except:
+            return
+
+    def update_time_elapsed(self, position):
+        try:
+            time_elapsed = position / self.fps  # time elapsed
+
+            # Converti il tempo in ore, minuti e secondi
+            hours, remainder = divmod(time_elapsed, 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            # Formatta il tempo come HH:MM:SS
+            time_elapsed_string = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+
+            # Imposta la stringa formattata nella variabile desiderata
+            self.time_elapsed_string.set(time_elapsed_string)
         except:
             return
 
@@ -625,6 +678,9 @@ class Timeline():
 
     def get_length(self):
         return int(self.max_)
+
+    def set_fps(self, value):
+        self.fps = value
 
     # Event when the window is resized
     def window_resize(self, event):
