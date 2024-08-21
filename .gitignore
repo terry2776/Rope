@@ -3,10 +3,11 @@
 models/*.ckpt
 models/*.pth
 models/*.onnx
-saved_parameters.json
-data.json
+*.json
 merged_embeddings.txt
 .vs
 *.sln
 *.pyproj
-tensorrt-engines/
+tensorrt-engines
+tensorrt-engines-cu118/
+tensorrt-engines-cu124/
