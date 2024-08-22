@@ -272,7 +272,6 @@ class GUI(tk.Tk):
         }
         self.bind('<Key>', self.handle_key_press)
         self.bind("<Return>", lambda event: self.focus_set())
-        self.bind("<Configure>", self.check_for_video_resize)
 
     def handle_key_press(self, event):
         if isinstance(self.focus_get(), tk.Entry):
@@ -845,15 +844,13 @@ class GUI(tk.Tk):
         self.video.grid(row=1, column=0, sticky='NEWS', padx=0, pady=0)
         self.video.bind("<MouseWheel>", self.iterate_through_merged_embeddings)
         self.video.bind("<ButtonRelease-1>", lambda event: self.toggle_play_video())
-        self.video.bind("<Configure>", self.resize_image)
 
     # Videos
       # Timeline
         # Slider
         self.layer['slider_frame'] = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_2, height=50)
         self.layer['slider_frame'].grid(row=2, column=0, sticky='NEWS', pady=0)
-        self.video_slider = GE.Timeline(self.layer['slider_frame'], self.widget, self.temp_toggle_swapper,
-                                        self.temp_toggle_enhancer, self.add_action, self.after, self.after_cancel)
+        self.video_slider = GE.Timeline(self.layer['slider_frame'], self.widget, self.temp_toggle_swapper, self.temp_toggle_enhancer, self.add_action)
 
         # Markers
         self.layer['markers_canvas'] = tk.Canvas(self.layer['preview_column'], style.canvas_frame_label_2, height = 20)
@@ -2210,7 +2207,7 @@ class GUI(tk.Tk):
         self.resize_image()
 
     # @profile
-    def resize_image(self, event=None):
+    def resize_image(self):
         image = self.video_image
 
         if len(image) != 0:
@@ -2242,21 +2239,46 @@ class GUI(tk.Tk):
             self.video.image = image
             self.video.configure(image=self.video.image)
 
-    def check_for_video_resize(self, event):
+    def check_for_video_resize(self):
 
         # Read the geometry from the last time json was updated. json only updates once the window ahs stopped changing
         win_geom = '%dx%d+%d+%d' % (self.json_dict['dock_win_geom'][0], self.json_dict['dock_win_geom'][1] , self.json_dict['dock_win_geom'][2], self.json_dict['dock_win_geom'][3])
 
         # # window has started changing
         if self.winfo_geometry() != win_geom:
-            # Update json
-            str1 = self.winfo_geometry().split('x')
-            str2 = str1[1].split('+')
-            win_geom = [str1[0], str2[0], str2[1], str2[2]]
-            win_geom = [int(strings) for strings in win_geom]
-            self.json_dict['dock_win_geom'] = win_geom
-            with open("data.json", "w") as outfile:
-                json.dump(self.json_dict, outfile)
+            # Resize image in video window
+            self.resize_image()
+            for k, v in self.widget.items():
+                v.is_resizing = True
+                v.hide()
+                v.is_resizing = False
+            for k, v in self.static_widget.items():
+                v.is_resizing = True
+                v.hide()
+                v.is_resizing = False
+
+            # Check if window has stopped changing
+            if self.winfo_geometry() != self.window_last_change:
+                self.window_last_change = self.winfo_geometry()
+
+            # The window has stopped changing
+            else:
+                for k, v in self.widget.items():
+                    v.is_resizing = True
+                    v.unhide()
+                    v.is_resizing = False
+                for k, v in self.static_widget.items():
+                    v.is_resizing = True
+                    v.unhide()
+                    v.is_resizing = False
+                # Update json
+                str1 = self.winfo_geometry().split('x')
+                str2 = str1[1].split('+')
+                win_geom = [str1[0], str2[0], str2[1], str2[2]]
+                win_geom = [int(strings) for strings in win_geom]
+                self.json_dict['dock_win_geom'] = win_geom
+                with open("data.json", "w") as outfile:
+                    json.dump(self.json_dict, outfile)
 
     def get_action(self):
         action = self.action_q[0]
