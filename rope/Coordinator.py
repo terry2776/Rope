@@ -113,6 +113,7 @@ def loop(state, action_queue):
         time.sleep(0.01)  # Add a small sleep to avoid busy-waiting and reduce CPU usage
 
 def quit_app(state):
+    vm.terminate_audio_process_tree()
     state.stop()
     gui.destroy()
 
