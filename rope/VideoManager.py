@@ -384,8 +384,7 @@ class VideoManager():
             if index != -1:
                 self.current_frame = min_frame-1
 
-            if self.control['AudioButton']:
-                self.terminate_audio_process_tree()
+            self.terminate_audio_process_tree()
 
             torch.cuda.empty_cache()
 
@@ -397,8 +396,7 @@ class VideoManager():
             if index != -1:
                 self.current_frame = min_frame-1
 
-            if self.control['AudioButton']:
-                self.terminate_audio_process_tree()
+            self.terminate_audio_process_tree()
 
             torch.cuda.empty_cache()
 
