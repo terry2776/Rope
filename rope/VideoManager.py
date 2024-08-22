@@ -34,8 +34,6 @@ class VideoManager():
         self.virtcam = False
         self.models = models
         # Model related
-        self.swapper_model = []             # insightface swapper model
-        # self.faceapp_model = []             # insight faceapp model
         self.input_names = []               # names of the inswapper.onnx inputs
         self.input_size = []                # size of the inswapper.onnx inputs
 
@@ -1641,31 +1639,6 @@ class VideoManager():
         diff = diff.permute(2,0,1)
 
         return diff
-
-    def clear_mem(self):
-        del self.swapper_model
-        del self.GFPGAN_model
-        del self.occluder_model
-        del self.face_parsing_model
-        del self.codeformer_model
-        del self.GPEN_256_model
-        del self.GPEN_512_model
-        del self.GPEN_1024_model
-        del self.resnet_model
-        del self.detection_model
-        del self.recognition_model
-
-        self.swapper_model = []
-        self.GFPGAN_model = []
-        self.occluder_model = []
-        self.face_parsing_model = []
-        self.codeformer_model = []
-        self.GPEN_256_model = []
-        self.GPEN_512_model = []
-        self.GPEN_1024_model = []
-        self.resnet_model = []
-        self.detection_model = []
-        self.recognition_model = []
 
     def soft_oval_mask(self, height, width, center, radius_x, radius_y, feather_radius=None):
         """
