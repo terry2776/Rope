@@ -362,7 +362,7 @@ class VideoManager():
                 # Parse the console to find where the audio started
                 while True:
                     temp = self.audio_sp.stdout.read(69)
-                    if temp[:7] != b'    nan' and temp[:7] !=  b'M-A:   ':
+                    if temp[:7] != b'    nan':
                         try:
                             sought_time = float(temp[:7].strip())
                             self.current_frame = int(self.fps*sought_time)
