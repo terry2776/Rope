@@ -58,58 +58,78 @@ class FaceLandmarks:
     def remove_all_data(self):
         self.data = {}
 
-    def apply_landmarks_to_widget_and_parameters(self, frame_number, face_id):
+    def apply_changes_to_widget_and_parameters(self, frame_number, face_id):
         if self.widget and self.parameters and self.add_action:
             landmarks = self.data.get(frame_number, {}).get(face_id, None)
             if landmarks is not None:
                 self.widget['FaceIDSlider'].set(face_id, request_frame=False)
                 self.parameters['FaceIDSlider'] = face_id
+
                 self.widget['EyeLeftXSlider'].set(landmarks[0][0], request_frame=False)
                 self.parameters['EyeLeftXSlider'] = landmarks[0][0]
+
                 self.widget['EyeLeftYSlider'].set(landmarks[0][1], request_frame=False)
                 self.parameters['EyeLeftYSlider'] = landmarks[0][1]
+
                 self.widget['EyeRightXSlider'].set(landmarks[1][0], request_frame=False)
                 self.parameters['EyeRightXSlider'] = landmarks[1][0]
+
                 self.widget['EyeRightYSlider'].set(landmarks[1][1], request_frame=False)
                 self.parameters['EyeRightYSlider'] = landmarks[1][1]
+
                 self.widget['NoseXSlider'].set(landmarks[2][0], request_frame=False)
                 self.parameters['NoseXSlider'] = landmarks[2][0]
+                
                 self.widget['NoseYSlider'].set(landmarks[2][1], request_frame=False)
                 self.parameters['NoseYSlider'] = landmarks[2][1]
+                
                 self.widget['MouthLeftXSlider'].set(landmarks[3][0], request_frame=False)
                 self.parameters['MouthLeftXSlider'] = landmarks[3][0]
+
                 self.widget['MouthLeftYSlider'].set(landmarks[3][1], request_frame=False)
                 self.parameters['MouthLeftYSlider'] = landmarks[3][1]
+
                 self.widget['MouthRightXSlider'].set(landmarks[4][0], request_frame=False)
                 self.parameters['MouthRightXSlider'] = landmarks[4][0]
+
                 self.widget['MouthRightYSlider'].set(landmarks[4][1], request_frame=False)
                 self.parameters['MouthRightYSlider'] = landmarks[4][1]
-                self.add_action('parameters', self.parameters)
+
             else:
-                self.widget['FaceIDSlider'].set(0, request_frame=False)
+                self.widget['FaceIDSlider'].set(1, request_frame=False)
                 self.parameters['FaceIDSlider'] = 1
+
                 self.widget['EyeLeftXSlider'].set(0, request_frame=False)
                 self.parameters['EyeLeftXSlider'] = 0
+
                 self.widget['EyeLeftYSlider'].set(0, request_frame=False)
                 self.parameters['EyeLeftYSlider'] = 0
+
                 self.widget['EyeRightXSlider'].set(0, request_frame=False)
                 self.parameters['EyeRightXSlider'] = 0
+
                 self.widget['EyeRightYSlider'].set(0, request_frame=False)
                 self.parameters['EyeRightYSlider'] = 0
+
                 self.widget['NoseXSlider'].set(0, request_frame=False)
                 self.parameters['NoseXSlider'] = 0
+
                 self.widget['NoseYSlider'].set(0, request_frame=False)
                 self.parameters['NoseYSlider'] = 0
+
                 self.widget['MouthLeftXSlider'].set(0, request_frame=False)
                 self.parameters['MouthLeftXSlider'] = 0
+
                 self.widget['MouthLeftYSlider'].set(0, request_frame=False)
                 self.parameters['MouthLeftYSlider'] = 0
+
                 self.widget['MouthRightXSlider'].set(0, request_frame=False)
                 self.parameters['MouthRightXSlider'] = 0
+
                 self.widget['MouthRightYSlider'].set(0, request_frame=False)
                 self.parameters['MouthRightYSlider'] = 0
-                self.add_action('parameters', self.parameters)
-#
+
+            self.add_action('parameters', self.parameters)
 
 class GUI(tk.Tk):
     def __init__(self, models):
@@ -1346,7 +1366,6 @@ class GUI(tk.Tk):
         # Face Landmarks
         self.face_landmarks = FaceLandmarks(self.widget, self.parameters, self.add_action)
         self.add_action("face_landmarks", self.face_landmarks)
-        #
 
     # Face Landmarks
     def update_face_landmarks_data(self, mode, name, use_markers=False):
@@ -1385,13 +1404,12 @@ class GUI(tk.Tk):
 
             self.add_action("face_landmarks", self.face_landmarks)
 
-            self.face_landmarks.apply_landmarks_to_widget_and_parameters(frame_number, face_id)
+            self.face_landmarks.apply_changes_to_widget_and_parameters(frame_number, face_id)
 
             if use_markers:
                 self.add_action('get_requested_video_frame', frame_number)
             else:
                 self.add_action('get_requested_video_frame_without_markers', frame_number)
-    #
 
     # Update the parameters or controls dicts and get a new frame
     def update_data(self, mode, name, use_markers=False):
@@ -1419,7 +1437,6 @@ class GUI(tk.Tk):
                 # self.add_action(load_target_video()
                 self.add_action('change_webcam_resolution_and_fps')
 
-            #
         elif mode=='control':
             self.control[name] =  self.widget[name].get()
             self.add_action('control', self.control)

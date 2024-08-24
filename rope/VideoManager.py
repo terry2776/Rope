@@ -118,7 +118,6 @@ class VideoManager():
 
         # Face Landmarks
         self.face_landmarks = []
-        #
 
     def assign_found_faces(self, found_faces):
         self.found_faces = found_faces
@@ -215,8 +214,8 @@ class VideoManager():
             # Face Landmarks
             if self.face_landmarks:
                 self.face_landmarks.remove_all_data()
-                self.face_landmarks.apply_landmarks_to_widget_and_parameters(self.current_frame, 1)
-            #
+                self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
+
             self.add_action("clear_stop_enhance", None)
 
     def load_target_image(self, file):
@@ -235,8 +234,8 @@ class VideoManager():
         # Face Landmarks
         if self.face_landmarks:
             self.face_landmarks.remove_all_data()
-            self.face_landmarks.apply_landmarks_to_widget_and_parameters(self.current_frame, 1)
-        #
+            self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
+
         self.add_action("clear_stop_enhance", None)
 
         self.is_image_loaded = True
@@ -291,7 +290,7 @@ class VideoManager():
             if success:
                 # Face Landmarks
                 if self.parameters['LandmarksPositionAdjSwitch'] and apply_landmarks and self.face_landmarks:
-                    self.face_landmarks.apply_landmarks_to_widget_and_parameters(self.current_frame, 1)
+                    self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
 
                 target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB) #RGB
                 if not self.control['SwapFacesButton']:
