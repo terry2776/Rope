@@ -1,4 +1,5 @@
 import os
+import traceback
 import cv2
 import tkinter as tk
 from tkinter import filedialog, font
@@ -22,11 +23,15 @@ import rope.Styles as style
 
 from skimage import transform as trans
 from torchvision.transforms import v2
+from tkinter import messagebox
 
+from os import listdir
+from os.path import isfile, join
 import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_image')
 import platform
 from platform import system
 
+import gc
 # Face Landmarks
 class FaceLandmarks:
     def __init__(self, widget = {}, parameters = {}, add_action = {}):
@@ -239,7 +244,7 @@ class GUI(tk.Tk):
         super().__init__()
 
         self.models = models
-        self.title('Rope-Pearl-00')
+        self.title('Rope-Next-00')
         self.target_media = []
         self.target_video_file = []
         self.action_q = []
@@ -304,6 +309,7 @@ class GUI(tk.Tk):
                             "SourceFaceAssignments":    [],
                             "EmbeddingNumber":          0,       #used for adding additional found faces
                             'AssignedEmbedding':        [],     #the currently assigned source embedding, including averaged ones
+                            'DFLModel':                 False,
                             }
         self.target_faces = []
 
@@ -311,7 +317,8 @@ class GUI(tk.Tk):
                             "TKButton":                 [],
                             "ButtonState":              "off",
                             "Image":                    [],
-                            "Embedding":                []
+                            "Embedding":                [],
+                            'DFLModel':                 False,
                             }
         self.source_faces = []
 
@@ -1234,12 +1241,6 @@ class GUI(tk.Tk):
         self.layer['parameters_canvas'] = tk.Canvas(self.layer['parameter_frame'], style.canvas_frame_label_3, bd=0, width=width)
         self.layer['parameters_canvas'].grid(row=1, column=0, sticky='NEWS', pady=0, padx=0)
 
-        '''
-        self.layer['parameters_frame'] = tk.Frame(self.layer['parameters_canvas'], style.canvas_frame_label_3, bd=0, width=width, height=2050)
-        self.layer['parameters_frame'].grid(row=0, column=0, sticky='NEWS', pady=0, padx=0)
-
-        self.layer['parameters_canvas'].create_window(0, 0, window = self.layer['parameters_frame'], anchor='nw')
-        '''
         # Face Editor
         tabview_main = ctk.CTkTabview(self.layer['parameters_canvas'], width=398, height=2050, corner_radius=6, border_width=1,
                                       fg_color=style.main, border_color=style.main3,
@@ -1371,6 +1372,18 @@ class GUI(tk.Tk):
         self.widget['DFLXSegSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLXSegSwitch', 'DFL XSeg', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
         row = row + 1
         self.widget['DFLXSegSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DFLXSegSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
+        # DFL RCT Color Transfer
+        row = row + 1
+        self.widget['DFLRCTColorSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLRCTColorSwitch', 'DFL RCT Color Transfer', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady+5)
+
+        # DFL Load only one Model
+        row = row + 1
+        self.widget['DFLLoadOnlyOneSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLLoadOnlyOneSwitch', 'DFL Keep Only Single Model in Memory', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady+5)
+
+        # DFL AMP Morph Factor
+        row = row + 1
+        self.widget['DFLAmpMorphSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DFLAmpMorphSlider', 'DFL AMP Morph Factor', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady+5, 0.62)
 
         # CLIP
         row = row + 1
@@ -1647,15 +1660,15 @@ class GUI(tk.Tk):
 
         self.status_left_label = tk.Label(bottom_frame, style.donate_1, cursor="hand2", text=" Questions/Help/Discussions (Discord)")
         self.status_left_label.grid( row = 0, column = 0, sticky='NEWS')
-        self.status_left_label.bind("<Button-1>", lambda e: self.callback("https://discord.gg/EcdVAFJzqp"))
+        self.status_left_label.bind("<Button-1>", lambda e: self.callback("https://discord.gg/dzvpCUet"))
 
-        self.status_label = tk.Label(bottom_frame, style.donate_1, text="Rope Github")
+        self.status_label = tk.Label(bottom_frame, style.donate_1, text="Rope Next Github")
         self.status_label.grid( row = 0, column = 1, sticky='NEWS')
-        self.status_label.bind("<Button-1>", lambda e: self.callback("https://github.com/Hillobar/Rope"))
+        self.status_label.bind("<Button-1>", lambda e: self.callback("https://github.com/Alucard24/Rope"))
 
         self.donate_label = tk.Label(bottom_frame, style.donate_1, text="Enjoy Rope? Please Support! (Paypal) ", anchor='e')
         self.donate_label.grid( row = 0, column = 2, sticky='NEWS')
-        self.donate_label.bind("<Button-1>", lambda e: self.callback("https://www.paypal.com/donate/?hosted_button_id=Y5SB9LSXFGRF2"))
+        self.donate_label.bind("<Button-1>", lambda e: self.callback("https://www.paypal.com/donate/?business=XJX2E5ZTMZUSQ&no_recurring=0&item_name=Support+us+with+a+donation%21+Your+contribution+helps+us+continue+improving+and+providing+quality+content.+Thank+you%21&currency_code=EUR"))
 
         # Face Landmarks
         self.face_landmarks = FaceLandmarks(self.widget, self.parameters, self.add_action)
@@ -1958,7 +1971,7 @@ class GUI(tk.Tk):
         # Build UI, update ui with default data
         self.create_gui()
 
-        self.video_image = cv2.cvtColor(cv2.imread('./rope/media/splash.png'), cv2.COLOR_BGR2RGB)
+        self.video_image = cv2.cvtColor(cv2.imread('./rope/media/splash_next.png'), cv2.COLOR_BGR2RGB)
         self.resize_image()
 
         # Create parameters and controls and and selctively fill with UI data
@@ -2073,6 +2086,7 @@ class GUI(tk.Tk):
 
     def load_all(self):
         if not self.json_dict["source videos"] or not self.json_dict["source faces"]:
+            messagebox.showinfo('Set Faces folder',f'Please set faces and videos folders first!',)
             print("Please set faces and videos folders first!")
             return
 
@@ -2119,38 +2133,93 @@ class GUI(tk.Tk):
         self.widget['FacesFolderButton'].set(False, request_frame=False)
         self.load_input_faces()
 
+    def load_dfl_input_models(self):
+        text_font = font.Font(family="Helvetica", size=10)
+        dfl_models_dir = 'dfl_models'
+        j=len(self.source_faces)
+        for model_file in listdir(dfl_models_dir):
+            if model_file=='.gitkeep':
+                continue
+            new_source_face = self.source_face.copy()
+            # self.source_faces.append(new_source_face)
+
+            new_source_face["ButtonState"] = False
+            new_source_face["Embedding"] = False
+            new_source_face['DFLModel'] = model_file
+            new_source_face['DFLModelPath'] = f'{dfl_models_dir}/{model_file}'
+
+            button_text = f"(DFM) {model_file.split('.')[0]}"
+
+            # Measure the text width
+            # text_width = text_font.measure(button_text)
+            text_width = text_font.measure('ABCDEFGHIJKLMNO')
+            new_source_face["TKButton"] = tk.Button(self.merged_faces_canvas, style.media_button_off_3, image=self.blank, text=button_text, height=14, width=text_width, compound='left', anchor='w')
+
+            new_source_face["TKButton"].bind("<ButtonRelease-1>", lambda event, arg=j: self.select_input_faces(event, arg))
+            new_source_face["TKButton"].bind("<MouseWheel>", lambda event: self.merged_faces_canvas.xview_scroll(-int(event.delta/120.0), "units"))
+            new_source_face['TextWidth'] = text_width
+            x_width = 20
+            if len(self.source_faces)>0:
+                x_width += self.get_adjacent_element_width(j)
+            new_source_face['XCoord'] = x_width
+            self.merged_faces_canvas.create_window(x_width,8+(22*(j%4)), window = new_source_face["TKButton"],anchor='nw')
+            self.source_faces.append(new_source_face)
+            j+=1
+        pass
+
+    def get_adjacent_element_width(self, cur_index=0):
+        x_width = 0
+        if len(self.source_faces)>=4 and cur_index>=4:
+            adjacent_elem_index = cur_index - 4
+            x_width = self.source_faces[adjacent_elem_index].get('XCoord',0) + self.source_faces[adjacent_elem_index].get('TextWidth',0)
+        return x_width
+
     def load_input_faces(self):
         self.source_faces = []
         self.merged_faces_canvas.delete("all")
         self.source_faces_canvas.delete("all")
 
+        text_font = font.Font(family="Helvetica", size=10)
+
         # First load merged embeddings
         try:
             temp0 = []
-            with open("merged_embeddings.txt", "r") as embedfile:
-                temp = embedfile.read().splitlines()
+            try:
+                with open("merged_embeddings.txt", "r") as embedfile:
+                    temp = embedfile.read().splitlines()
 
-                for i in range(0, len(temp), 513):
-                    to = [temp[i][6:], np.array(temp[i+1:i+513], dtype='float32')]
-                    temp0.append(to)
+                    for i in range(0, len(temp), 513):
+                        to = [temp[i][6:], np.array(temp[i+1:i+513], dtype='float32')]
+                        temp0.append(to)
+            except:
+                pass
 
             for j in range(len(temp0)):
                 new_source_face = self.source_face.copy()
+
+                new_source_face["ButtonState"] = False
+                new_source_face["Embedding"] = temp0[j][1]
+
+                text_width = text_font.measure('ABCDEFGHIJKLMNO')
+
+                new_source_face["TKButton"] = tk.Button(self.merged_faces_canvas, style.media_button_off_3, image=self.blank, text=temp0[j][0], height=14, width=text_width, compound='left', anchor='w')
+
+                new_source_face["TKButton"].bind("<ButtonRelease-1>", lambda event, arg=j: self.select_input_faces(event, arg))
+                new_source_face["TKButton"].bind("<MouseWheel>", lambda event: self.merged_faces_canvas.xview_scroll(-int(event.delta/120.0), "units"))
+                new_source_face['TextWidth'] = text_width
+                x_width = 20
+                if len(self.source_faces)>0:
+                    x_width += self.get_adjacent_element_width(j)
+                new_source_face['XCoord'] = x_width
+                self.merged_faces_canvas.create_window(x_width,8+(22*(j%4)), window = new_source_face["TKButton"],anchor='nw')
                 self.source_faces.append(new_source_face)
 
-                self.source_faces[j]["ButtonState"] = False
-                self.source_faces[j]["Embedding"] = temp0[j][1]
-                self.source_faces[j]["TKButton"] = tk.Button(self.merged_faces_canvas, style.media_button_off_3, image=self.blank, text=temp0[j][0], height=14, width=84, compound='left')
-
-                self.source_faces[j]["TKButton"].bind("<ButtonRelease-1>", lambda event, arg=j: self.select_input_faces(event, arg))
-                self.source_faces[j]["TKButton"].bind("<MouseWheel>", lambda event: self.merged_faces_canvas.xview_scroll(-int(event.delta/120.0), "units"))
-
-                self.merged_faces_canvas.create_window((j//4)*92,8+(22*(j%4)), window = self.source_faces[j]["TKButton"],anchor='nw')
+            self.load_dfl_input_models()
 
             self.merged_faces_canvas.configure(scrollregion = self.merged_faces_canvas.bbox("all"))
             self.merged_faces_canvas.xview_moveto(0)
 
-        except:
+        except Exception as e:
             pass
 
         self.shift_i_len = len(self.source_faces)
@@ -2243,6 +2312,7 @@ class GUI(tk.Tk):
                 ret.append([face_kps, face_emb, cropped_img])
 
         except Exception:
+            messagebox.showinfo('No Media', 'No media selected')
             print(" No media selected")
 
         else:
@@ -2367,6 +2437,7 @@ class GUI(tk.Tk):
 
                 # Clear all of the assignments
                 tface["SourceFaceAssignments"] = []
+                tface['DFLModel'] = False
 
                 # Iterate through all Input faces
                 temp_holder = []
@@ -2376,6 +2447,15 @@ class GUI(tk.Tk):
                     if self.source_faces[j]["ButtonState"]:
                         tface["SourceFaceAssignments"].append(j)
                         temp_holder.append(self.source_faces[j]['Embedding'])
+
+                        if self.source_faces[j]['DFLModel']:
+                            # Clear DFL models from memory
+                            if self.models.dfl_models and self.parameters['DFLLoadOnlyOneSwitch']:
+                                for model in list(self.models.dfl_models):
+                                    del self.models.dfl_models[model]._sess
+                                    del self.models.dfl_models[model]
+                                gc.collect()
+                            tface['DFLModel'] = self.source_faces[j]['DFLModel']
 
                 # do averaging
                 if temp_holder:
@@ -2700,6 +2780,7 @@ class GUI(tk.Tk):
                     # and record
                     if self.widget['TLRecButton'].get():
                         if not self.json_dict["saved videos"]:
+                            messagebox.showinfo('Set saved videos folder','PLease set a folder to save videos before starting to record ')
                             print("Set saved video folder first!")
                             self.add_action("play_video", "stop_from_gui")
 

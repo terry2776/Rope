@@ -7,10 +7,16 @@ models/*.trt
 models/liveportrait_onnx/*.onnx
 models/liveportrait_onnx/*.trt
 *.json
-merged_embeddings.txt
+*.pkl
+*.engine
+*.profile
+*.timing
+*.dfm
+merged_embeddings*.txt
 .vs
 *.sln
 *.pyproj
+.vscode/
 tensorrt-engines
 tensorrt-engines-cu118/
 tensorrt-engines-cu124/

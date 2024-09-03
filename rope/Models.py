@@ -21,6 +21,8 @@ import platform
 from rope.EngineBuilder import onnx_to_trt as onnx2trt
 import os
 from packaging import version
+from dfl.DFMModel import DFMModel
+from dfl.xlib.onnxruntime.device import ORTDeviceInfo
 
 try:
     import tensorrt as trt
@@ -223,6 +225,7 @@ class Models():
         self.ghostfacev2swap_model = []
         self.ghostfacev3swap_model = []
 
+        self.dfl_models = {}
         self.emap = []
         self.GFPGAN_model = []
         self.GPEN_256_model = []
@@ -492,6 +495,8 @@ class Models():
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
+        self.dfl_model = []
+        self.dfl_models = {}
 
         # Face Editor
         self.lp_motion_extractor_model = []
@@ -601,6 +606,11 @@ class Models():
 
         self.syncvec.cpu()
         ghostfaceswap_model.run_with_iobinding(io_binding)
+
+    def calc_swapper_latent_dfl(self, source_embedding):
+        latent = source_embedding.reshape((1,-1))
+
+        return latent
 
     def run_GFPGAN(self, image, output):
         if not self.GFPGAN_model:

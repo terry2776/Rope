@@ -19,3 +19,4 @@ psutil==6.0.0
 onnxruntime-gpu==1.18.0
 packaging==24.1
 tensorrt-cu11
+numexpr
