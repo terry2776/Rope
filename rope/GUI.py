@@ -719,16 +719,16 @@ class GUI(tk.Tk):
                 # Verifica il tipo di configurazione
                 if config_data.get("config_type") != "parameters_visibility":
                     print(f"Error: {file_name} has an invalid configuration type!")
-                    return None
+                    return None, None
 
                 # Restituisci i parametri di configurazione
                 return config_data.get("parameters", {}), config_data.get("parameters_face_editor", {})
 
             except FileNotFoundError:
-                return {}
+                return {}, {}
             except json.JSONDecodeError:
                 print(f"Error decoding JSON file: {file_name}")
-                return None
+                return None, None
 
         def save_params_visibility_to_json(params_visibility, params_face_editor_visibility, initial_dir=".", default_filename="startup_parameters_visibility.json"):
             # Aggiungi il tipo di configurazione e la versione
