@@ -1254,7 +1254,7 @@ class Models():
                 scores_list.append(pos_scores)
 
         if len(bboxes_list) == 0:
-            return [], []
+            return [], [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
@@ -1510,7 +1510,7 @@ class Models():
                 scores_list.append(pos_scores)
 
         if len(bboxes_list) == 0:
-            return [], []
+            return [], [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
@@ -1741,7 +1741,7 @@ class Models():
                 scores_list.append(score_raw)
 
         if len(bboxes_list) == 0:
-            return [], []
+            return [], [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
@@ -1988,7 +1988,7 @@ class Models():
                 scores_list.append(pos_scores)
 
         if len(bboxes_list) == 0:
-            return [], []
+            return [], [], []
 
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
