@@ -1448,7 +1448,7 @@ class VideoManager():
 
         # Grab 512 face from image and create 256 and 128 copys
         if parameters_face_editor["FaceEditorTypeTextSel"] == "Human-Face":
-            _, lmk_crop, _ = self.models.detect_face_landmark_203(img, bbox=[], det_kpss=kps, from_points=True)
+            _, lmk_crop, _ = self.models.run_detect_landmark( img, bbox=[], det_kpss=kps, detect_mode='203', score=0.5, from_points=True)
             source_eye_ratio = faceutil.calc_eye_close_ratio(lmk_crop[None])
             source_lip_ratio = faceutil.calc_lip_close_ratio(lmk_crop[None])
             init_source_eye_ratio = round(float(source_eye_ratio.mean()), 2)
