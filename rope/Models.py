@@ -23,6 +23,8 @@ import os
 from packaging import version
 from dfl.DFMModel import DFMModel
 from dfl.xlib.onnxruntime.device import ORTDeviceInfo
+from queue import Queue
+from threading import Lock
 
 try:
     import tensorrt as trt
@@ -55,14 +57,20 @@ TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
 # adjusted to work with TensorRT 10.3.0
 class TensorRTPredictor:
     """
-    Implements inference for the TensorRT engine.
+    Implements inference for the TensorRT engine with a pool of execution contexts.
     """
 
     def __init__(self, **kwargs):
         """
         :param engine_path: The path to the serialized engine to load from disk.
+        :param pool_size: The size of the pool of execution contexts.
         """
         global TRT_LOGGER
+
+        # Inizializzazione del modello TensorRT
+        self.engine = None
+        self.context_pool = None
+        self.lock = Lock()
 
         custom_plugin_path = kwargs.get("custom_plugin_path", None)
         if custom_plugin_path is not None:
@@ -75,17 +83,16 @@ class TensorRTPredictor:
         # Load TRT engine
         engine_path = kwargs.get("model_path", None)
         self.debug = kwargs.get("debug", False)
+        self.pool_size = kwargs.get("pool_size", 10)
         assert engine_path, f"model:{engine_path} must exist!"
 
-        # Usa il logger globale di TensorRT
+        # Caricamento dell'engine TensorRT
         with open(engine_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
             assert runtime
             self.engine = runtime.deserialize_cuda_engine(f.read())
         assert self.engine
-        self.context = self.engine.create_execution_context()
-        assert self.context
 
-        # Setup I/O bindings
+        # Setup I/O bindings e contesto
         self.inputs = []
         self.outputs = []
         self.tensors = OrderedDict()
@@ -111,6 +118,11 @@ class TensorRTPredictor:
         assert len(self.inputs) > 0
         assert len(self.outputs) > 0
         self.allocate_max_buffers()
+
+        # Creazione del pool di contesti di esecuzione
+        self.context_pool = Queue(maxsize=self.pool_size)
+        for _ in range(self.pool_size):
+            self.context_pool.put(self.engine.create_execution_context())
 
     def allocate_max_buffers(self, device="cuda"):
         nvtx.range_push("allocate_max_buffers")
@@ -157,40 +169,122 @@ class TensorRTPredictor:
                 print(f"trt output {i} -> {o['name']} -> {o['shape']}")
         return specs
 
-    def adjust_buffer(self, feed_dict):
+    def adjust_buffer(self, feed_dict, context):
+        """
+        Adjust input buffer sizes and set input shapes in the given execution context.
+        :param feed_dict: A dictionary of inputs as numpy arrays.
+        :param context: The TensorRT execution context to set input shapes.
+        """
         nvtx.range_push("adjust_buffer")
         for name, buf in feed_dict.items():
             input_tensor = self.tensors[name]
             current_shape = list(buf.shape)
             slices = tuple(slice(0, dim) for dim in current_shape)
             input_tensor[slices].copy_(buf)
-            self.context.set_input_shape(name, current_shape)
+            # Imposta la forma di input nel contesto fornito
+            context.set_input_shape(name, current_shape)
         nvtx.range_pop()
 
-    def predict(self, feed_dict, stream):
+    def predict(self, feed_dict):
         """
-        Execute inference on a batch of images.
-        :param data: A list of inputs as numpy arrays.
-        :return A list of outputs as numpy arrays.
+        Execute inference on a batch of images in synchronous mode using execute_v2.
+        :param feed_dict: A dictionary of inputs as numpy arrays.
+        :return: A dictionary of outputs as PyTorch tensors.
         """
-        nvtx.range_push("set_tensors")
-        self.adjust_buffer(feed_dict)
-        for name, tensor in self.tensors.items():
-            self.context.set_tensor_address(name, tensor.data_ptr())
-        nvtx.range_pop()
-        nvtx.range_push("execute")
-        noerror = self.context.execute_async_v3(stream)
-        if not noerror:
-            raise ValueError("ERROR: inference failed.")
-        nvtx.range_pop()
-        return self.tensors
+        # Ottieni un contesto dal pool
+        with self.lock:
+            context = self.context_pool.get()
+
+        try:
+            nvtx.range_push("set_tensors")
+            # Passa il contesto a adjust_buffer
+            self.adjust_buffer(feed_dict, context)
+
+            for name, tensor in self.tensors.items():
+                assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
+                context.set_tensor_address(name, tensor.data_ptr())
+            
+            nvtx.range_pop()
+
+            # Prepara i binding per execute_v2()
+            bindings = [tensor.data_ptr() for tensor in self.tensors.values()]
+
+            # Esecuzione sincrona con execute_v2()
+            nvtx.range_push("execute")
+            noerror = context.execute_v2(bindings)
+            if not noerror:
+                raise ValueError("ERROR: inference failed.")
+            nvtx.range_pop()
+
+            return self.tensors
+
+        finally:
+            # Restituisci il contesto al pool dopo l'uso
+            with self.lock:
+                self.context_pool.put(context)
+
+    def predict_async(self, feed_dict, stream):
+        """
+        Execute inference on a batch of images in asynchronous mode using execute_async_v3.
+        :param feed_dict: A dictionary of inputs as numpy arrays.
+        :param stream: A CUDA stream for asynchronous execution.
+        :return: A dictionary of outputs as PyTorch tensors.
+        """
+        # Ottieni un contesto dal pool
+        with self.lock:
+            context = self.context_pool.get()
+
+        try:
+            nvtx.range_push("set_tensors")
+            # Passa il contesto a adjust_buffer
+            self.adjust_buffer(feed_dict, context)
+
+            for name, tensor in self.tensors.items():
+                assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
+                context.set_tensor_address(name, tensor.data_ptr())
+            
+            nvtx.range_pop()
+
+            # Esecuzione asincrona con execute_async_v3()
+            nvtx.range_push("execute_async")
+            noerror = context.execute_async_v3(stream)
+            if not noerror:
+                raise ValueError("ERROR: inference failed.")
+            nvtx.range_pop()
+
+            return self.tensors
+
+        finally:
+            # Restituisci il contesto al pool dopo l'uso
+            with self.lock:
+                self.context_pool.put(context)
+
+    def cleanup(self):
+        """
+        Clean up all resources associated with the TensorRTPredictor.
+        This method should be called explicitly before deleting the object.
+        """
+        # Pulisci l'engine TensorRT
+        if hasattr(self, 'engine') and self.engine is not None:
+            del self.engine  # Libera l'engine di TensorRT
+            self.engine = None  # Imposta a None per assicurarti che il GC lo raccolga
+
+        # Pulisci il pool di contesti di esecuzione
+        if hasattr(self, 'context_pool') and self.context_pool is not None:
+            while not self.context_pool.empty():
+                context = self.context_pool.get()
+                del context  # Libera ogni contesto
+            self.context_pool = None  # Imposta a None per il GC
+
+        # Imposta gli attributi su None per garantire la pulizia
+        self.inputs = None
+        self.outputs = None
+        self.tensors = None
+        self.pool_size = None
 
     def __del__(self):
-        del self.engine
-        del self.context
-        del self.inputs
-        del self.outputs
-        del self.tensors
+        # Richiama il metodo cleanup nel distruttore per maggiore sicurezza
+        self.cleanup()
 
 class Models():
     def __init__(self):
@@ -499,12 +593,47 @@ class Models():
         self.dfl_models = {}
 
         # Face Editor
-        self.lp_motion_extractor_model = []
-        self.lp_appearance_feature_extractor_model = []
-        self.lp_stitching_model = []
-        self.lp_stitching_eye_model = []
-        self.lp_stitching_lip_model = []
-        self.lp_warping_spade_fix_model = []
+        if isinstance(self.lp_motion_extractor_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_motion_extractor_model.cleanup()
+
+        del self.lp_motion_extractor_model
+        self.lp_motion_extractor_model = None
+
+        if isinstance(self.lp_appearance_feature_extractor_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_appearance_feature_extractor_model.cleanup()
+
+        del self.lp_appearance_feature_extractor_model
+        self.lp_appearance_feature_extractor_model = None
+
+        if isinstance(self.lp_stitching_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_stitching_model.cleanup()
+
+        del self.lp_stitching_model
+        self.lp_stitching_model = None
+
+        if isinstance(self.lp_stitching_eye_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_stitching_eye_model.cleanup()
+
+        del self.lp_stitching_eye_model
+        self.lp_stitching_eye_model = None
+
+        if isinstance(self.lp_stitching_lip_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_stitching_lip_model.cleanup()
+
+        del self.lp_stitching_lip_model
+        self.lp_stitching_lip_model = None
+
+        if isinstance(self.lp_warping_spade_fix_model, TensorRTPredictor):
+            # È un'istanza di TensorRTPredictor
+            self.lp_warping_spade_fix_model.cleanup()
+
+        del self.lp_warping_spade_fix_model
+        self.lp_warping_spade_fix_model = None
 
     def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper128'):
         if face_swapper_model == 'Inswapper128':
@@ -2461,7 +2590,9 @@ class Models():
 
             feed_dict = {}
             feed_dict["img"] = I_s
-            preds_dict = motion_extractor_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = motion_extractor_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = motion_extractor_model.predict(feed_dict)
+            torch.cuda.synchronize()
             kp_info = {
                 'pitch': preds_dict["pitch"],
                 'yaw': preds_dict["yaw"],
@@ -2550,7 +2681,9 @@ class Models():
 
             feed_dict = {}
             feed_dict["img"] = I_s
-            preds_dict = appearance_feature_extractor_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = appearance_feature_extractor_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = appearance_feature_extractor_model.predict(feed_dict)
+            torch.cuda.synchronize()
             output = preds_dict["output"]
 
             nvtx.range_pop()
@@ -2602,7 +2735,9 @@ class Models():
 
             feed_dict = {}
             feed_dict["input"] = feat_eye
-            preds_dict = stitching_eye_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = stitching_eye_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = stitching_eye_model.predict(feed_dict)
+            torch.cuda.synchronize()
             delta = preds_dict["output"]
 
             nvtx.range_pop()
@@ -2650,7 +2785,9 @@ class Models():
 
             feed_dict = {}
             feed_dict["input"] = feat_lip
-            preds_dict = stitching_lip_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = stitching_lip_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = stitching_lip_model.predict(feed_dict)
+            torch.cuda.synchronize()
             delta = preds_dict["output"]
 
             nvtx.range_pop()
@@ -2698,7 +2835,9 @@ class Models():
 
             feed_dict = {}
             feed_dict["input"] = feat_stiching
-            preds_dict = stitching_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = stitching_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = stitching_model.predict(feed_dict)
+            torch.cuda.synchronize()
             delta = preds_dict["output"]
 
             nvtx.range_pop()
@@ -2771,7 +2910,9 @@ class Models():
             feed_dict["feature_3d"] = feature_3d
             feed_dict["kp_source"] = kp_source
             feed_dict["kp_driving"] = kp_driving
-            preds_dict = warping_spade_model.predict(feed_dict, torch.cuda.current_stream().cuda_stream)
+            preds_dict = warping_spade_model.predict_async(feed_dict, torch.cuda.current_stream().cuda_stream)
+            #preds_dict = warping_spade_model.predict(feed_dict)
+            torch.cuda.synchronize()
             out = preds_dict["out"]
 
             nvtx.range_pop()
