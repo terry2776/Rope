@@ -613,68 +613,62 @@ class Models():
     def run_enhance_frame_tile_process(self, img, enhancer_type, tile_size=256, scale=1):
         _, _, height, width = img.shape
 
+        # Calcolo del numero di tile necessari
         tiles_x = math.ceil(width / tile_size)
         tiles_y = math.ceil(height / tile_size)
 
+        # Calcolo del padding necessario per adattare l'immagine alle dimensioni dei tile
         pad_right = (tile_size - (width % tile_size)) % tile_size
         pad_bottom = (tile_size - (height % tile_size)) % tile_size
 
+        # Padding dell'immagine se necessario
         if pad_right != 0 or pad_bottom != 0:
             img = torch.nn.functional.pad(img, (0, pad_right, 0, pad_bottom), 'constant', 0)
 
+        # Creazione di un output tensor vuoto
         b, c, h, w = img.shape
-        output_shape = (b, c, h * scale, w * scale)
-        output = torch.empty((output_shape), dtype=torch.float32, device='cuda').contiguous()
+        output = torch.empty((b, c, h * scale, w * scale), dtype=torch.float32, device='cuda').contiguous()
 
-        match enhancer_type:
-            case 'RealEsrgan-x2-Plus':
-                fn_upscaler = self.run_realesrganx2
-            case 'RealEsrgan-x4-Plus':
-                fn_upscaler = self.run_realesrganx4
-            case 'BSRGan-x2':
-                fn_upscaler = self.run_bsrganx2
-            case 'BSRGan-x4':
-                fn_upscaler = self.run_bsrganx4
-            case 'UltraSharp-x4':
-                fn_upscaler = self.run_ultrasharpx4
-            case 'UltraMix-x4':
-                fn_upscaler = self.run_ultramixx4
-            case 'RealEsr-General-x4v3':
-                fn_upscaler = self.run_realesrx4v3
-            case _:
-                if pad_right != 0 or pad_bottom != 0:
-                    img = v2.functional.crop(img, 0,0, height, width)
+        # Selezione della funzione di upscaling in base al tipo
+        upscaler_functions = {
+            'RealEsrgan-x2-Plus': self.run_realesrganx2,
+            'RealEsrgan-x4-Plus': self.run_realesrganx4,
+            'BSRGan-x2': self.run_bsrganx2,
+            'BSRGan-x4': self.run_bsrganx4,
+            'UltraSharp-x4': self.run_ultrasharpx4,
+            'UltraMix-x4': self.run_ultramixx4,
+            'RealEsr-General-x4v3': self.run_realesrx4v3
+        }
 
-                return img
+        fn_upscaler = upscaler_functions.get(enhancer_type)
 
-        for j in range(tiles_y):
-            for i in range(tiles_x):
-                x_start = i * tile_size
-                y_start = j * tile_size
-                x_end = x_start + tile_size
-                y_end = y_start + tile_size
+        if not fn_upscaler:  # Se il tipo di enhancer non è valido
+            if pad_right != 0 or pad_bottom != 0:
+                img = v2.functional.crop(img, 0, 0, height, width)
+            return img
 
-                input_tile = img[:, :, y_start:y_end, x_start:x_end].contiguous()
-                output_tile = torch.empty((input_tile.shape[0], input_tile.shape[1], input_tile.shape[2] * scale, input_tile.shape[3] * scale), dtype=torch.float32, device='cuda').contiguous()
+        with torch.no_grad():  # Disabilita il calcolo del gradiente
+            # Elaborazione dei tile
+            for j in range(tiles_y):
+                for i in range(tiles_x):
+                    x_start, y_start = i * tile_size, j * tile_size
+                    x_end, y_end = x_start + tile_size, y_start + tile_size
 
-                # upscale tile
-                fn_upscaler(input_tile, output_tile)
+                    # Estrazione del tile di input
+                    input_tile = img[:, :, y_start:y_end, x_start:x_end].contiguous()
+                    output_tile = torch.empty((input_tile.shape[0], input_tile.shape[1], input_tile.shape[2] * scale, input_tile.shape[3] * scale), dtype=torch.float32, device='cuda').contiguous()
 
-                output_y_start = y_start * scale
-                output_x_start = x_start * scale
-                output_y_end = output_y_start + output_tile.shape[2]
-                output_x_end = output_x_start + output_tile.shape[3]
+                    # Upscaling del tile
+                    fn_upscaler(input_tile, output_tile)
 
-                output[:, :, output_y_start:output_y_end, output_x_start:output_x_end] = output_tile
+                    # Inserimento del tile upscalato nel tensor di output
+                    output_y_start, output_x_start = y_start * scale, x_start * scale
+                    output_y_end, output_x_end = output_y_start + output_tile.shape[2], output_x_start + output_tile.shape[3]
+                    output[:, :, output_y_start:output_y_end, output_x_start:output_x_end] = output_tile
 
-        if pad_right != 0 or pad_bottom != 0:
-            output = v2.functional.crop(output, 0,0, height * scale, width * scale)
-
-        '''
-        if scale != 1 and to_original_size == True:
-            t_resize = v2.Resize((height, width), interpolation=v2.InterpolationMode.BILINEAR, antialias=True)
-            output = t_resize(output)
-        '''
+            # Ritaglio dell'output per rimuovere il padding aggiunto
+            if pad_right != 0 or pad_bottom != 0:
+                output = v2.functional.crop(output, 0, 0, height * scale, width * scale)
 
         return output
 
