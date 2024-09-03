@@ -1191,23 +1191,24 @@ class VideoManager():
         else:
             if swapper_model == 'Inswapper128':
                 with torch.no_grad():  # Disabilita il calcolo del gradiente se è solo per inferenza
-                    swapper_output = torch.empty((1, 3, 128, 128), dtype=torch.float32, device='cuda')  # Crea una volta fuori dai loop
                     for k in range(itex):
                         for j in range(dim):
                             for i in range(dim):
-                                # Prende il sotto-blocco dell'immagine
-                                input_face_disc = input_face_affined[j::dim, i::dim].permute(2, 0, 1).unsqueeze(0).contiguous()
+                                input_face_disc = input_face_affined[j::dim,i::dim]
+                                input_face_disc = input_face_disc.permute(2, 0, 1)
+                                input_face_disc = torch.unsqueeze(input_face_disc, 0).contiguous()
 
-                                # Passa direttamente a swapper_output senza ricreare lo spazio di memoria
+                                swapper_output = torch.empty((1,3,128,128), dtype=torch.float32, device='cuda').contiguous()
                                 self.models.run_swapper(input_face_disc, latent, swapper_output)
 
-                                # Riformatta il risultato di output
-                                output[j::dim, i::dim] = swapper_output.squeeze().permute(1, 2, 0)
+                                swapper_output = torch.squeeze(swapper_output)
+                                swapper_output = swapper_output.permute(1, 2, 0)
 
-                        # Aggiorna i tensor di input e output
-                        prev_face = input_face_affined
-                        input_face_affined = output
-                        output.mul_(255).clamp_(0, 255)  # Operazioni in-place per migliorare l'efficienza
+                                output[j::dim, i::dim] = swapper_output.clone()
+                        prev_face = input_face_affined.clone()
+                        input_face_affined = output.clone()
+                        output = torch.mul(output, 255)
+                        output = torch.clamp(output, 0, 255)
 
             elif swapper_model == 'SimSwap512':
                 for k in range(itex):
