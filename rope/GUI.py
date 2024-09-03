@@ -1278,7 +1278,7 @@ class GUI(tk.Tk):
 
         # Face Landmarks Position
         row = row + 1
-        self.widget['LandmarksPositionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksPositionAdjSwitch', 'Landmarks Position Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        self.widget['LandmarksPositionAdjSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'LandmarksPositionAdjSwitch', '5 Landmarks Position Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
         row = row + 1
         self.widget['FaceIDSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceIDSlider', 'Face ID: ', 3, self.update_face_landmarks_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62)
         row = row + 1

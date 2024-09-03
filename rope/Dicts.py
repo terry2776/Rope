@@ -194,7 +194,7 @@ DEFAULT_DATA = {
 'ShowLandmarksSwitchState':         False,
 #
 # Face Landmarks Position
-'LandmarksPositionAdjSwitchInfoText': 'KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the position of face landmarks found by the detector. ',
+'LandmarksPositionAdjSwitchInfoText': '5 - KPS ADJUSTMENT:\nThis is an experimental feature to perform direct adjustments to the position of face landmarks found by the detector. ',
 'LandmarksPositionAdjSwitchState':    False,
 #
 # Face Likeness
