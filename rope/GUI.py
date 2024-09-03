@@ -2158,16 +2158,17 @@ class GUI(tk.Tk):
 
     def auto_swap(self):
             # Reselect Target Image
-            # try:
-            self.find_faces()
-            self.target_faces[0]["ButtonState"] = True
-            self.target_faces[0]["TKButton"].config(style.media_button_on_3)
+            try:
+                self.find_faces()
+                self.target_faces[0]["ButtonState"] = True
+                self.target_faces[0]["TKButton"].config(style.media_button_on_3)
 
-            # Reselect Source images
-            self.select_input_faces('auto', '')
-            self.toggle_swapper(True)
-            # except:
-            #     pass
+                # Reselect Source images
+                self.select_input_faces('auto', '')
+                self.toggle_swapper(True)
+            except:
+                pass
+
     def toggle_auto_swap(self):
         self.widget['AutoSwapButton'].toggle_button()
 
