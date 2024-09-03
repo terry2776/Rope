@@ -1713,75 +1713,85 @@ class Text_Entry():
     def load_default(self):
         pass
 
-class VRAM_Indicator():
+class VRAM_Indicator:
     def __init__(self, parent, style_level, width, height, x, y):
         self.parent = parent
         self.width = width
         self.height = height
         self.x = x
         self.y = y
-        self.blank = tk.PhotoImage()
+        self.blank = tk.PhotoImage()  # Immagine vuota di placeholder
 
         self.used = 0
-        self.total = 1
+        self.total = 1  # Per evitare divisione per zero
         self.is_resizing = False
 
-        if style_level == 3:
-            self.frame_style = style.canvas_frame_label_3
-            self.text_style = style.text_3
-            self.sel_off_style = style.text_selection_off_3
-            self.sel_on_style = style.text_selection_on_3
+        # Imposta gli stili basati su `style_level`
+        self._set_styles(style_level)
 
-        if style_level == 2:
-            self.frame_style = style.canvas_frame_label_2
-            self.text_style = style.text_2
-            self.sel_off_style = style.text_selection_off_2
-            self.sel_on_style = style.text_selection_on_2
-
-        if style_level == 1:
-            self.frame_style = style.canvas_frame_label_1
-
+        # Frame principale
         self.frame = tk.Frame(self.parent, self.frame_style, width=self.width, height=self.height)
         self.frame.place(x=self.x, y=self.y)
 
-        self.label_name = tk.Label(self.frame, self.frame_style, image=self.blank, compound='c', fg='#b1b1b2', font=("Segoe UI", 9), width=50, text='VRAM', height=self.height)
+        # Label del nome VRAM
+        self.label_name = tk.Label(
+            self.frame, self.frame_style, image=self.blank, compound='c', fg='#b1b1b2',
+            font=("Segoe UI", 9), width=50, text='VRAM', height=self.height
+        )
         self.label_name.place(x=0, y=0)
 
-        # self.label_value = tk.Label(self.frame, self.frame_style, bg='yellow', image=self.blank, compound='c', fg='#D0D0D0', font=("Segoe UI", 9), justify='right', width=100, text='VRAM', height=self.height)
-        # self.label_value.place(x=200, y=0)
-
-        self.canvas = tk.Canvas(self.frame, self.frame_style, highlightthickness =2, highlightbackground='#b1b1b2', width=self.width-60, height=self.height-4)
+        # Canvas per la barra di indicazione VRAM
+        self.canvas = tk.Canvas(
+            self.frame, self.frame_style, highlightthickness=2, highlightbackground='#b1b1b2',
+            width=self.width - 60, height=self.height - 4
+        )
         self.canvas.place(x=50, y=0)
 
+    def _set_styles(self, style_level):
+        """Imposta gli stili in base al livello di stile fornito."""
+        style_map = {
+            3: (style.canvas_frame_label_3, style.text_3, style.text_selection_off_3, style.text_selection_on_3),
+            2: (style.canvas_frame_label_2, style.text_2, style.text_selection_off_2, style.text_selection_on_2),
+            1: (style.canvas_frame_label_1, None, None, None)
+        }
+        self.frame_style, self.text_style, self.sel_off_style, self.sel_on_style = style_map.get(style_level, (None, None, None, None))
+
     def update_display(self):
-        self.canvas.delete('all')
+        """Aggiorna il display dell'indicatore VRAM."""
+        # Controlla se il canvas esiste ancora
+        if not self.canvas.winfo_exists():
+            return  # Esci se il canvas non esiste più
+
+        self.canvas.delete('all')  # Ora è sicuro eliminare tutti gli oggetti
+
         width = self.canvas.winfo_width()
 
+        # Calcolo del rapporto usato/total
         try:
-            ratio = self.used/self.total
+            ratio = self.used / self.total
         except ZeroDivisionError:
             ratio = 1
 
-        if ratio>0.9:
-            color = '#d10303'
-        else:
-            color = '#b1b1b2'
-        width = ratio*width
+        # Colore della barra in base all'uso della VRAM
+        color = '#d10303' if ratio > 0.9 else '#b1b1b2'
+        filled_width = ratio * width
 
-        self.canvas.create_rectangle(0, 0, width, self.height, fill=color)
-
-        # text = str(self.used)+' / '+str(self.total)+' MB'
-        # self.label_value.configure(text=text)
+        # Crea il rettangolo indicatore
+        self.canvas.create_rectangle(0, 0, filled_width, self.height, fill=color)
 
     def set(self, used, total):
+        """Imposta i valori di VRAM usata e totale, e aggiorna il display."""
         self.used = used
         self.total = total
-
         self.update_display()
 
     def hide(self):
-        pass
+        """Nascondi il widget dell'indicatore VRAM."""
+        if not self.is_resizing:
+            self.frame.place_forget()
 
     def unhide(self):
-        pass
+        """Mostra il widget dell'indicatore VRAM."""
+        if not self.is_resizing:
+            self.frame.place(x=self.x, y=self.y)
 
