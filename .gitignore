@@ -3,6 +3,9 @@
 models/*.ckpt
 models/*.pth
 models/*.onnx
+models/*.trt
+models/liveportrait_onnx/*.onnx
+models/liveportrait_onnx/*.trt
 *.json
 merged_embeddings.txt
 .vs

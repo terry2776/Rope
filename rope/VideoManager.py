@@ -72,6 +72,9 @@ class VideoManager():
 
         self.parameters = []
 
+        # Face Editor
+        self.parameters_face_editor = []
+
         self.target_video = []
 
         self.fps = 1.0
@@ -119,6 +122,9 @@ class VideoManager():
         # Face Landmarks
         self.face_landmarks = []
 
+        # Face Editor
+        self.face_editor = []
+
     def assign_found_faces(self, found_faces):
         self.found_faces = found_faces
 
@@ -149,6 +155,7 @@ class VideoManager():
                 self.load_target_video(self.video_file)
                 self.add_action('clear_faces_stop_swap', None)
                 self.add_action('clear_stop_enhance', None)
+                self.add_action('clear_stop_faces_editor', None)
 
     def load_target_video( self, file ):
         # If we already have a video loaded, release it
@@ -216,6 +223,11 @@ class VideoManager():
                 self.face_landmarks.remove_all_data()
                 self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
 
+            # Face Editor
+            if self.face_editor:
+                self.face_editor.remove_all_data()
+                self.face_editor.apply_changes_to_widget_and_parameters(self.current_frame, 1)
+
             self.add_action("clear_stop_enhance", None)
 
     def load_target_image(self, file):
@@ -235,6 +247,11 @@ class VideoManager():
         if self.face_landmarks:
             self.face_landmarks.remove_all_data()
             self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
+
+        # Face Editor
+        if self.face_editor:
+            self.face_editor.remove_all_data()
+            self.face_editor.apply_changes_to_widget_and_parameters(self.current_frame, 1)
 
         self.add_action("clear_stop_enhance", None)
 
@@ -292,8 +309,12 @@ class VideoManager():
                 if self.parameters['LandmarksPositionAdjSwitch'] and apply_landmarks and self.face_landmarks:
                     self.face_landmarks.apply_changes_to_widget_and_parameters(self.current_frame, 1)
 
+                # Face Editor
+                if apply_landmarks and self.face_editor:
+                    self.face_editor.apply_changes_to_widget_and_parameters(self.current_frame, 1)
+
                 target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB) #RGB
-                if not self.control['SwapFacesButton']:
+                if not self.control['SwapFacesButton'] and not self.control['EditFacesButton']:
                     temp = [target_image, self.current_frame] #temp = RGB
                 else:
                     temp = [self.swap_video(target_image, self.current_frame, marker), self.current_frame] # temp = RGB
@@ -303,7 +324,7 @@ class VideoManager():
 
                 self.r_frame_q.append(temp)
         elif self.is_image_loaded:
-            if not self.control['SwapFacesButton']:
+            if not self.control['SwapFacesButton'] and not self.control['EditFacesButton']:
                 temp = [self.image, self.current_frame] # image = RGB
 
             else:
@@ -599,7 +620,7 @@ class VideoManager():
 
         if success:
             target_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB)
-            if not self.control['SwapFacesButton']:
+            if not self.control['SwapFacesButton'] and not self.control['EditFacesButton']:
                 temp = [target_image, frame_number]
 
             else:
@@ -856,47 +877,83 @@ class VideoManager():
             rotation_angles = [0, 90, 180, 270]
         else:
             rotation_angles = [0]
-        bboxes, kpss = self.func_w_test("detect", self.models.run_detect, img, parameters['DetectTypeTextSel'], max_num=20, score=parameters['DetectScoreSlider']/100.0, use_landmark_detection=parameters['LandmarksDetectionAdjSwitch'], landmark_detect_mode=parameters["LandmarksDetectTypeTextSel"], landmark_score=parameters["LandmarksDetectScoreSlider"]/100.0, from_points=parameters["LandmarksAlignModeFromPointsSwitch"], rotation_angles=rotation_angles)
+
+        use_landmark_detection=parameters['LandmarksDetectionAdjSwitch']
+        landmark_detect_mode=parameters["LandmarksDetectTypeTextSel"]
+        from_points=parameters["LandmarksAlignModeFromPointsSwitch"]
+        if control['EditFacesButton']:
+            if not use_landmark_detection or landmark_detect_mode=="5":
+                # force to use landmark detector when edit face is enabled.
+                use_landmark_detection = True
+                landmark_detect_mode = "106"
+
+            # force to use from_points in landmark detector when edit face is enabled.
+            from_points = True
+
+        bboxes, kpss_5, kpss = self.func_w_test("detect", self.models.run_detect, img, parameters['DetectTypeTextSel'], max_num=20, score=parameters['DetectScoreSlider']/100.0, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=parameters["LandmarksDetectScoreSlider"]/100.0, from_points=from_points, rotation_angles=rotation_angles)
+
+        # Set Max FaceID to FaceLandmarks and FaceEditor widgets
+        self.face_landmarks.apply_max_face_id_to_widget(frame_number, kpss_5.shape[0])
+        self.face_editor.apply_max_face_id_to_widget(frame_number, kpss_5.shape[0])
+        #
 
         # Get embeddings for all faces found in the frame
         ret = []
         # Face Landmarks
-        face_id = 0
-        #
-        for face_kps in kpss:
+        for i in range(kpss_5.shape[0]):
+            face_kps_5 = kpss_5[i]
+            face_kps = kpss[i]
             # Face Landmarks
-            face_id+=1
             if self.face_landmarks and parameters['LandmarksPositionAdjSwitch']:
-                landmarks = self.face_landmarks.get_landmarks(frame_number, face_id)
+                landmarks = self.face_landmarks.get_landmarks(frame_number, i + 1)
                 if landmarks is not None:
-                    face_kps[0][0] += landmarks[0][0]
-                    face_kps[0][1] += landmarks[0][1]
-                    face_kps[1][0] += landmarks[1][0]
-                    face_kps[1][1] += landmarks[1][1]
-                    face_kps[2][0] += landmarks[2][0]
-                    face_kps[2][1] += landmarks[2][1]
-                    face_kps[3][0] += landmarks[3][0]
-                    face_kps[3][1] += landmarks[3][1]
-                    face_kps[4][0] += landmarks[4][0]
-                    face_kps[4][1] += landmarks[4][1]
+                    # Change the ref points
+                    if parameters['FaceAdjSwitch']:
+                        face_kps_5[:,0] += parameters['KPSXSlider']
+                        face_kps_5[:,1] += parameters['KPSYSlider']
+                        face_kps_5[:,0] -= 255
+                        face_kps_5[:,0] *= (1+parameters['KPSScaleSlider']/100)
+                        face_kps_5[:,0] += 255
+                        face_kps_5[:,1] -= 255
+                        face_kps_5[:,1] *= (1+parameters['KPSScaleSlider']/100)
+                        face_kps_5[:,1] += 255
+
+                    face_kps_5[0][0] += landmarks[0][0]
+                    face_kps_5[0][1] += landmarks[0][1]
+                    face_kps_5[1][0] += landmarks[1][0]
+                    face_kps_5[1][1] += landmarks[1][1]
+                    face_kps_5[2][0] += landmarks[2][0]
+                    face_kps_5[2][1] += landmarks[2][1]
+                    face_kps_5[3][0] += landmarks[3][0]
+                    face_kps_5[3][1] += landmarks[3][1]
+                    face_kps_5[4][0] += landmarks[4][0]
+                    face_kps_5[4][1] += landmarks[4][1]
             #
 
-            face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
-            ret.append([face_kps, face_emb])
+            if control['SwapFacesButton']:
+                face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps_5, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
+                ret.append([face_kps_5, face_kps, face_emb])
+            else:
+                ret.append([face_kps_5, face_kps, None])
 
         if ret:
             # Loop through target faces to see if they match our found face embeddings
-            for fface in ret:
-                for found_face in self.found_faces:
-                    # sim between face in video and already found face
-                    sim = self.findCosineDistance(fface[1], found_face["Embedding"])
-                    # if the face[i] in the frame matches afound face[j] AND the found face is active (not [])
-                    if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]:
-                        s_e = found_face["AssignedEmbedding"]
-                        img_orig = torch.clone(img)
-                        # s_e = found_face['ptrdata']
-                        img = self.func_w_test("swap_video", self.swap_core, img, fface[0], s_e, fface[1], parameters, control)
-                        # img = img.permute(2,0,1)
+            for i, fface in enumerate(ret):
+                if control['SwapFacesButton']:
+                    for found_face in self.found_faces:
+                        # sim between face in video and already found face
+                        sim = self.findCosineDistance(fface[2], found_face["Embedding"])
+                        # if the face[i] in the frame matches afound face[j] AND the found face is active (not [])
+                        if sim>=float(parameters["ThresholdSlider"]) and found_face["SourceFaceAssignments"]:
+                            s_e = found_face["AssignedEmbedding"]
+                            # img_orig = torch.clone(img)
+                            # s_e = found_face['ptrdata']
+                            img = self.func_w_test("swap_video", self.swap_core, img, fface[0], fface[1], s_e, fface[2], parameters, control)
+                            # img = img.permute(2,0,1)
+
+                if control['EditFacesButton']:
+                    parameters_face_editor = self.face_editor.get_named_parameters(frame_number, i + 1)
+                    img = self.func_w_test("swap_video", self.swap_edit_face_core, img, fface[1], parameters, parameters_face_editor.copy(), control)
 
             img = img.permute(1,2,0)
             if not control['MaskViewButton'] and parameters['OrientSwitch']:
@@ -930,14 +987,27 @@ class VideoManager():
                 else:
                     p = 2
 
-                face_id = 0
-                for face in ret:
-                    face_id += 1
-                    if parameters['LandmarksPositionAdjSwitch'] and parameters['FaceIDSlider'] == face_id:
+                for i, face in enumerate(ret):
+                    if parameters['LandmarksPositionAdjSwitch'] and parameters['FaceIDSlider'] == i + 1:
                         kcolor = tuple((255, 0, 0))
+                        keypoints = face[0]
+
                     else:
                         kcolor = tuple((0, 255, 255))
-                    for kpoint in face[0]:
+                        keypoints = face[1]
+
+                    # Change the ref points
+                    if parameters['FaceAdjSwitch']:
+                        keypoints[:,0] += parameters['KPSXSlider']
+                        keypoints[:,1] += parameters['KPSYSlider']
+                        keypoints[:,0] -= 255
+                        keypoints[:,0] *= (1+parameters['KPSScaleSlider']/100)
+                        keypoints[:,0] += 255
+                        keypoints[:,1] -= 255
+                        keypoints[:,1] *= (1+parameters['KPSScaleSlider']/100)
+                        keypoints[:,1] += 255
+
+                    for kpoint in keypoints:
                         kpoint = kpoint / det_scale
                         for i in range(-1, p):
                             for j in range(-1, p):
@@ -946,8 +1016,9 @@ class VideoManager():
                                     img[int(kpoint[1])+i][int(kpoint[0])+j][1] = kcolor[1]
                                     img[int(kpoint[1])+i][int(kpoint[0])+j][2] = kcolor[2]
                                 except:
-                                    print("Key-points value {} exceed the image size {}.".format(kpoint, (img_x, img_y)))
+                                    #print("Key-points value {} exceed the image size {}.".format(kpoint, (img_x, img_y)))
                                     continue
+
         return img.astype(np.uint8)
 
     def findCosineDistance(self, vector1, vector2):
@@ -971,7 +1042,7 @@ class VideoManager():
         return result
 
     # @profile
-    def swap_core(self, img, kps, s_e, t_e, parameters, control): # img = RGB
+    def swap_core(self, img, kps_5, kps, s_e, t_e, parameters, control): # img = RGB
         swapper_model = parameters['FaceSwapperModelTextSel']
 
         if swapper_model != 'GhostFace-v1' and swapper_model != 'GhostFace-v2' and swapper_model != 'GhostFace-v3':
@@ -991,7 +1062,7 @@ class VideoManager():
                 dst[:,1] += 255
 
             tform = trans.SimilarityTransform()
-            tform.estimate(kps, dst)
+            tform.estimate(kps_5, dst)
         else:
             dst = faceutil.get_arcface_template(image_size=512, mode='arcfacemap')
 
@@ -1007,7 +1078,7 @@ class VideoManager():
                     k[:,1] *= (1+parameters['KPSScaleSlider']/100)
                     k[:,1] += 255
 
-            M, _ = faceutil.estimate_norm_arcface_template(kps, src=dst)
+            M, _ = faceutil.estimate_norm_arcface_template(kps_5, src=dst)
             tform = trans.SimilarityTransform()
             tform.params[0:2] = M
 
@@ -1021,7 +1092,6 @@ class VideoManager():
         original_face_512 = v2.functional.crop(original_face_512, 0,0, 512, 512)# 3, 512, 512
         original_face_256 = t256(original_face_512)
         original_face_128 = t128(original_face_256)
-        #cv2.imwrite('test.png', cv2.cvtColor(original_face_512.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         if swapper_model == 'Inswapper128':
             latent = torch.from_numpy(self.models.calc_swapper_latent(s_e)).float().to('cuda')
@@ -1059,9 +1129,8 @@ class VideoManager():
             dim = 2
             input_face_affined = original_face_256
 
-        # Optional Scaling # change the thransform matrix
+        # Optional Scaling # change the transform matrix scaling from center
         if parameters['FaceAdjSwitch']:
-            #input_face_affined = v2.functional.affine(input_face_affined, 0, (0, 0), 1 + parameters['FaceScaleSlider'] / 100, 0, center=(dim*128-1, dim*128-1), interpolation=v2.InterpolationMode.BILINEAR)
             input_face_affined = v2.functional.affine(input_face_affined, 0, (0, 0), 1 + parameters['FaceScaleSlider'] / 100, 0, center=(dim*128/2, dim*128/2), interpolation=v2.InterpolationMode.BILINEAR)
 
         itex = 1
@@ -1128,12 +1197,10 @@ class VideoManager():
 
                 output = swapper_output.clone()
                 output = torch.clamp(output, 0, 255)
-                #cv2.imwrite('test_swap.png', cv2.cvtColor(output.cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         output = output.permute(2, 0, 1)
 
         swap = t512(output)
-        #cv2.imwrite('test_swap512.png', cv2.cvtColor(swap.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         if parameters['StrengthSwitch']:
             if itex == 0:
@@ -1151,13 +1218,6 @@ class VideoManager():
                 swap = torch.mul(swap, alpha)
                 prev_face = torch.mul(prev_face, 1-alpha)
                 swap = torch.add(swap, prev_face)
-
-            # swap = torch.squeeze(swap)
-            # swap = torch.mul(swap, 255)
-            # swap = torch.clamp(swap, 0, 255)
-            # # swap_128 = swap
-            # swap = t256(swap)
-            # swap = t512(swap)
 
         # Create border mask
         border_mask = torch.ones((128, 128), dtype=torch.float32, device=device)
@@ -1230,19 +1290,19 @@ class VideoManager():
 
         if parameters['RestoreMouthSwitch'] or parameters['RestoreEyesSwitch']:
             M = tform.params[0:2]
-            ones_column = np.ones((kps.shape[0], 1), dtype=np.float32)
-            homogeneous_kps = np.hstack([kps, ones_column])
-            dst_kps = np.dot(homogeneous_kps, M.T)
+            ones_column = np.ones((kps_5.shape[0], 1), dtype=np.float32)
+            homogeneous_kps = np.hstack([kps_5, ones_column])
+            dst_kps_5 = np.dot(homogeneous_kps, M.T)
 
             img_swap_mask = torch.ones((1, 512, 512), dtype=torch.float32, device=device).contiguous()
             img_orig_mask = torch.zeros((1, 512, 512), dtype=torch.float32, device=device).contiguous()
 
             if parameters['RestoreMouthSwitch']:
-                img_swap_mask = self.restore_mouth(img_orig_mask, img_swap_mask, dst_kps, parameters['RestoreMouthSlider']/100, parameters['RestoreMouthFeatherSlider'], parameters['RestoreMouthSizeSlider']/100, parameters['RestoreMouthRadiusFactorXSlider'], parameters['RestoreMouthRadiusFactorYSlider'])
+                img_swap_mask = self.restore_mouth(img_orig_mask, img_swap_mask, dst_kps_5, parameters['RestoreMouthSlider']/100, parameters['RestoreMouthFeatherSlider'], parameters['RestoreMouthSizeSlider']/100, parameters['RestoreMouthRadiusFactorXSlider'], parameters['RestoreMouthRadiusFactorYSlider'])
                 img_swap_mask = torch.clamp(img_swap_mask, 0, 1)
 
             if parameters['RestoreEyesSwitch']:
-                img_swap_mask = self.restore_eyes(img_orig_mask, img_swap_mask, dst_kps,  parameters['RestoreEyesSlider']/100, parameters['RestoreEyesFeatherSlider'], parameters['RestoreEyesSizeSlider'],  parameters['RestoreEyesRadiusFactorXSlider'], parameters['RestoreEyesRadiusFactorYSlider'])
+                img_swap_mask = self.restore_eyes(img_orig_mask, img_swap_mask, dst_kps_5,  parameters['RestoreEyesSlider']/100, parameters['RestoreEyesFeatherSlider'], parameters['RestoreEyesSizeSlider'],  parameters['RestoreEyesRadiusFactorXSlider'], parameters['RestoreEyesRadiusFactorYSlider'])
                 img_swap_mask = torch.clamp(img_swap_mask, 0, 1)
 
             img_swap_mask = t128(img_swap_mask)
@@ -1259,7 +1319,6 @@ class VideoManager():
         # Add blur to swap_mask results
         gauss = transforms.GaussianBlur(parameters['BlendSlider']*2+1, (parameters['BlendSlider']+1)*0.2)
         swap_mask = gauss(swap_mask)
-        #cv2.imwrite('test_swap512_2.png', cv2.cvtColor(swap.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         # Combine border and swap mask, scale, and apply to swap
         swap_mask = torch.mul(swap_mask, border_mask)
@@ -1292,7 +1351,6 @@ class VideoManager():
             swap = v2.functional.affine(swap, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0,interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
             swap = swap[0:3, top:bottom, left:right]
             swap = swap.permute(1, 2, 0)
-            #cv2.imwrite('test_swap512_3.png', cv2.cvtColor(swap.cpu().numpy(), cv2.COLOR_RGB2BGR))
 
             # Untransform the swap mask
             swap_mask = v2.functional.pad(swap_mask, (0,0,img.shape[2]-512, img.shape[1]-512))
@@ -1311,7 +1369,6 @@ class VideoManager():
             swap = swap.type(torch.uint8)
             swap = swap.permute(2,0,1)
             img[0:3, top:bottom, left:right] = swap
-            #cv2.imwrite('test_swap512_4.png', cv2.cvtColor(img.permute(1,2,0).cpu().numpy(), cv2.COLOR_RGB2BGR))
 
         else:
             # Invert swap mask
@@ -1331,6 +1388,113 @@ class VideoManager():
             # Place them side by side
             img = torch.hstack([original_face_512, swap_mask*255])
             img = img.permute(2,0,1)
+
+        return img
+
+    def swap_edit_face_core(self, img, kps, parameters, parameters_face_editor, control, **kwargs): # img = RGB
+        # Scaling Transforms
+        t256 = v2.Resize((256, 256), interpolation=v2.InterpolationMode.BILINEAR, antialias=False)
+
+        # initial eye_ratio and lip_ratio values
+        init_source_eye_ratio = 0.0
+        init_source_lip_ratio = 0.0
+
+        # Grab 512 face from image and create 256 and 128 copys
+        if parameters_face_editor["FaceEditorTypeTextSel"] == "Human-Face":
+            _, lmk_crop, _ = self.models.detect_face_landmark_203(img, bbox=[], det_kpss=kps, from_points=True)
+            source_eye_ratio = faceutil.calc_eye_close_ratio(lmk_crop[None])
+            source_lip_ratio = faceutil.calc_lip_close_ratio(lmk_crop[None])
+            init_source_eye_ratio = round(float(source_eye_ratio.mean()), 2)
+            init_source_lip_ratio = round(float(source_lip_ratio[0][0]), 2)
+
+            # prepare_retargeting_image
+            original_face_512, M_o2c, M_c2o = faceutil.warp_face_by_face_landmark_x(img, kps, dsize=512, scale=parameters_face_editor["CropScaleSlider"], vy_ratio=-0.125, interpolation=v2.InterpolationMode.BILINEAR)
+            original_face_256 = t256(original_face_512)
+            mask_ori = faceutil.prepare_paste_back(self.models.lp_mask_crop, M_c2o, dsize=(img.shape[1], img.shape[2])).contiguous()
+
+            x_s_info = self.models.lp_motion_extractor(original_face_256, 'Human-Face')
+            x_d_info_user_pitch = x_s_info['pitch'] + parameters_face_editor['HeadPitchSlider'] #input_head_pitch_variation
+            x_d_info_user_yaw = x_s_info['yaw'] + parameters_face_editor['HeadYawSlider'] # input_head_yaw_variation
+            x_d_info_user_roll = x_s_info['roll'] + parameters_face_editor['HeadRollSlider'] #input_head_roll_variation
+            R_s_user = faceutil.get_rotation_matrix(x_s_info['pitch'], x_s_info['yaw'], x_s_info['roll'])
+            R_d_user = faceutil.get_rotation_matrix(x_d_info_user_pitch, x_d_info_user_yaw, x_d_info_user_roll)
+            f_s_user = self.models.lp_appearance_feature_extractor(original_face_256, 'Human-Face')
+            x_s_user = faceutil.transform_keypoint(x_s_info)
+
+            #execute_image_retargeting
+            mov_x = torch.tensor(parameters_face_editor['XAxisMovementSlider']).to(device)
+            mov_y = torch.tensor(parameters_face_editor['YAxisMovementSlider']).to(device)
+            mov_z = torch.tensor(parameters_face_editor['ZAxisMovementSlider']).to(device)
+            eyeball_direction_x = torch.tensor(parameters_face_editor['EyeGazeHorizontalSlider']).to(device)
+            eyeball_direction_y = torch.tensor(parameters_face_editor['EyeGazeVerticalSlider']).to(device)
+            smile = torch.tensor(parameters_face_editor['MouthSmileSlider']).to(device)
+            wink = torch.tensor(parameters_face_editor['EyeWinkSlider']).to(device)
+            eyebrow = torch.tensor(parameters_face_editor['EyeBrowsDirectionSlider']).to(device)
+            lip_variation_zero = torch.tensor(parameters_face_editor['MouthPoutingSlider']).to(device)
+            lip_variation_one = torch.tensor(parameters_face_editor['MouthPursingSlider']).to(device)
+            lip_variation_two = torch.tensor(parameters_face_editor['MouthGrinSlider']).to(device)
+            lip_variation_three = torch.tensor(parameters_face_editor['LipsCloseOpenSlider']).to(device)
+
+            x_c_s = x_s_info['kp']
+            delta_new = x_s_info['exp']
+            scale_new = x_s_info['scale']
+            t_new = x_s_info['t']
+            R_d_new = (R_d_user @ R_s_user.permute(0, 2, 1)) @ R_s_user
+
+            if eyeball_direction_x != 0 or eyeball_direction_y != 0:
+                delta_new = faceutil.update_delta_new_eyeball_direction(eyeball_direction_x, eyeball_direction_y, delta_new)
+            if smile != 0:
+                delta_new = faceutil.update_delta_new_smile(smile, delta_new)
+            if wink != 0:
+                delta_new = faceutil.update_delta_new_wink(wink, delta_new)
+            if eyebrow != 0:
+                delta_new = faceutil.update_delta_new_eyebrow(eyebrow, delta_new)
+            if lip_variation_zero != 0:
+                delta_new = faceutil.update_delta_new_lip_variation_zero(lip_variation_zero, delta_new)
+            if lip_variation_one !=  0:
+                delta_new = faceutil.update_delta_new_lip_variation_one(lip_variation_one, delta_new)
+            if lip_variation_two != 0:
+                delta_new = faceutil.update_delta_new_lip_variation_two(lip_variation_two, delta_new)
+            if lip_variation_three != 0:
+                delta_new = faceutil.update_delta_new_lip_variation_three(lip_variation_three, delta_new)
+            if mov_x != 0:
+                delta_new = faceutil.update_delta_new_mov_x(-mov_x, delta_new)
+            if mov_y !=0 :
+                delta_new = faceutil.update_delta_new_mov_y(mov_y, delta_new)
+
+            x_d_new = mov_z * scale_new * (x_c_s @ R_d_new + delta_new) + t_new
+            eyes_delta, lip_delta = None, None
+
+            input_eye_ratio = max(min(init_source_eye_ratio + parameters_face_editor['EyesOpenRatioSlider'], 0.80), 0.00)
+            if input_eye_ratio != init_source_eye_ratio:
+                combined_eye_ratio_tensor = faceutil.calc_combined_eye_ratio([[float(input_eye_ratio)]], lmk_crop)
+                eyes_delta = self.models.lp_retarget_eye(x_s_user, combined_eye_ratio_tensor, 'Human-Face')
+
+            input_lip_ratio = max(min(init_source_lip_ratio + parameters_face_editor['LipsOpenRatioSlider'], 0.80), 0.00)
+            if input_lip_ratio != init_source_lip_ratio:
+                combined_lip_ratio_tensor = faceutil.calc_combined_lip_ratio([[float(input_lip_ratio)]], lmk_crop)
+                lip_delta = self.models.lp_retarget_lip(x_s_user, combined_lip_ratio_tensor)
+
+            x_d_new = x_d_new + \
+                    (eyes_delta if eyes_delta is not None else 0) + \
+                    (lip_delta if lip_delta is not None else 0)
+
+            flag_stitching_retargeting_input: bool = kwargs.get('flag_stitching_retargeting_input', True)
+            if flag_stitching_retargeting_input:
+                x_d_new = self.models.lp_stitching(x_s_user, x_d_new)
+
+            out = self.models.lp_warp_decode(f_s_user, x_s_user, x_d_new, 'Human-Face')
+            out = torch.squeeze(out)
+            out = torch.clamp(out, 0, 1)  # clip to 0~1
+            out = torch.clamp(torch.mul(out, 255), 0, 255).type(torch.uint8)  # 0~1 -> 0~255
+
+            flag_do_crop_input_retargeting_image = kwargs.get('flag_do_crop_input_retargeting_image', True)
+            if flag_do_crop_input_retargeting_image:
+                gauss = transforms.GaussianBlur(parameters['BlendSlider']*2+1, (parameters['BlendSlider']+1)*0.2)
+                mask_ori = gauss(mask_ori)
+                img = faceutil.paste_back(out, M_c2o, img, mask_ori)
+            else:
+                img = out
 
         return img
 

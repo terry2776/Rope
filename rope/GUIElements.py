@@ -22,7 +22,7 @@ class CTkScrollableFrame(ctk.CTkFrame):
         super().__init__(parent, *args, **kwargs)
         self.is_resizing = False
 
-        self.canvas = ctk.CTkCanvas(self, bg="white", highlightthickness=0)
+        self.canvas = ctk.CTkCanvas(self, bg=style.main, highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew")
 
         self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
@@ -473,12 +473,12 @@ class Scrollbar_y():
         pass
 
 class Timeline():
-    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, add_action):
+    def __init__(self, parent, widget, temp_toggle_swapper, temp_toggle_enhancer, temp_toggle_faces_editor, add_action):
         self.parent = parent
         self.add_action = add_action
         self.temp_toggle_swapper = temp_toggle_swapper
         self.temp_toggle_enhancer = temp_toggle_enhancer
-
+        self.temp_toggle_faces_editor = temp_toggle_faces_editor
         self.frame_length = 0
         self.height = 20
         self.counter_width = 40
@@ -572,8 +572,10 @@ class Timeline():
                 x_coord = float(event.x)
                 position = self.coord2pos(x_coord)
 
-                # Turn off swapping
+                # Turn off swapping, enhancer, face editor
                 self.temp_toggle_swapper('off')
+                self.temp_toggle_enhancer('off')
+                self.temp_toggle_faces_editor('off')
                 self.add_action("play_video", "stop")
 
             elif event.type == '5': # l-button release
@@ -582,6 +584,8 @@ class Timeline():
 
                 # Turn on swapping, if it was already on and request new frame
                 self.temp_toggle_swapper('on')
+                self.temp_toggle_enhancer('on')
+                self.temp_toggle_faces_editor('on')
 
             elif event.type == '6': # l-button drag
                 x_coord = float(event.x)
@@ -1400,6 +1404,17 @@ class Slider2():
 
     def set(self, value, request_frame=True):
         self.update_handle(float(value), True)
+
+    def set_max(self, value, request_frame=True):
+        if value < self.min_:
+            value = self.min_
+
+        self.max_ = value
+        if self.amount > value:
+            self.update_handle(float(value), True)
+            return True
+
+        return False
 
     def get(self):
         return self.amount
