@@ -895,7 +895,7 @@ class VideoManager():
         bboxes, kpss_5, kpss = self.func_w_test("detect", self.models.run_detect, img, parameters['DetectTypeTextSel'], max_num=20, score=parameters['DetectScoreSlider']/100.0, use_landmark_detection=use_landmark_detection, landmark_detect_mode=landmark_detect_mode, landmark_score=parameters["LandmarksDetectScoreSlider"]/100.0, from_points=from_points, rotation_angles=rotation_angles)
 
         # Set Max FaceID to FaceLandmarks and FaceEditor widgets
-        if kpss_5 is not None:
+        if kpss_5 is not None and len(kpss_5) > 0:
             self.face_landmarks.apply_max_face_id_to_widget(frame_number, kpss_5.shape[0])
             self.face_editor.apply_max_face_id_to_widget(frame_number, kpss_5.shape[0])
         else:
@@ -906,7 +906,7 @@ class VideoManager():
         # Get embeddings for all faces found in the frame
         ret = []
         # Face Landmarks
-        if kpss_5 is not None:
+        if kpss_5 is not None and len(kpss_5) > 0:
             for i in range(kpss_5.shape[0]):
                 face_kps_5 = kpss_5[i]
                 face_kps = kpss[i]
