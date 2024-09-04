@@ -906,41 +906,42 @@ class VideoManager():
         # Get embeddings for all faces found in the frame
         ret = []
         # Face Landmarks
-        for i in range(kpss_5.shape[0]):
-            face_kps_5 = kpss_5[i]
-            face_kps = kpss[i]
-            # Face Landmarks
-            if self.face_landmarks and parameters['LandmarksPositionAdjSwitch']:
-                landmarks = self.face_landmarks.get_landmarks(frame_number, i + 1)
-                if landmarks is not None:
-                    # Change the ref points
-                    if parameters['FaceAdjSwitch']:
-                        face_kps_5[:,0] += parameters['KPSXSlider']
-                        face_kps_5[:,1] += parameters['KPSYSlider']
-                        face_kps_5[:,0] -= 255
-                        face_kps_5[:,0] *= (1+parameters['KPSScaleSlider']/100)
-                        face_kps_5[:,0] += 255
-                        face_kps_5[:,1] -= 255
-                        face_kps_5[:,1] *= (1+parameters['KPSScaleSlider']/100)
-                        face_kps_5[:,1] += 255
+        if kpss_5 is not None:
+            for i in range(kpss_5.shape[0]):
+                face_kps_5 = kpss_5[i]
+                face_kps = kpss[i]
+                # Face Landmarks
+                if self.face_landmarks and parameters['LandmarksPositionAdjSwitch']:
+                    landmarks = self.face_landmarks.get_landmarks(frame_number, i + 1)
+                    if landmarks is not None:
+                        # Change the ref points
+                        if parameters['FaceAdjSwitch']:
+                            face_kps_5[:,0] += parameters['KPSXSlider']
+                            face_kps_5[:,1] += parameters['KPSYSlider']
+                            face_kps_5[:,0] -= 255
+                            face_kps_5[:,0] *= (1+parameters['KPSScaleSlider']/100)
+                            face_kps_5[:,0] += 255
+                            face_kps_5[:,1] -= 255
+                            face_kps_5[:,1] *= (1+parameters['KPSScaleSlider']/100)
+                            face_kps_5[:,1] += 255
 
-                    face_kps_5[0][0] += landmarks[0][0]
-                    face_kps_5[0][1] += landmarks[0][1]
-                    face_kps_5[1][0] += landmarks[1][0]
-                    face_kps_5[1][1] += landmarks[1][1]
-                    face_kps_5[2][0] += landmarks[2][0]
-                    face_kps_5[2][1] += landmarks[2][1]
-                    face_kps_5[3][0] += landmarks[3][0]
-                    face_kps_5[3][1] += landmarks[3][1]
-                    face_kps_5[4][0] += landmarks[4][0]
-                    face_kps_5[4][1] += landmarks[4][1]
-            #
+                        face_kps_5[0][0] += landmarks[0][0]
+                        face_kps_5[0][1] += landmarks[0][1]
+                        face_kps_5[1][0] += landmarks[1][0]
+                        face_kps_5[1][1] += landmarks[1][1]
+                        face_kps_5[2][0] += landmarks[2][0]
+                        face_kps_5[2][1] += landmarks[2][1]
+                        face_kps_5[3][0] += landmarks[3][0]
+                        face_kps_5[3][1] += landmarks[3][1]
+                        face_kps_5[4][0] += landmarks[4][0]
+                        face_kps_5[4][1] += landmarks[4][1]
+                #
 
-            if control['SwapFacesButton']:
-                face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps_5, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
-                ret.append([face_kps_5, face_kps, face_emb])
-            else:
-                ret.append([face_kps_5, face_kps, None])
+                if control['SwapFacesButton']:
+                    face_emb, _ = self.func_w_test('recognize',  self.models.run_recognize, img, face_kps_5, self.parameters["SimilarityTypeTextSel"], self.parameters['FaceSwapperModelTextSel'])
+                    ret.append([face_kps_5, face_kps, face_emb])
+                else:
+                    ret.append([face_kps_5, face_kps, None])
 
         if ret:
             # Loop through target faces to see if they match our found face embeddings
