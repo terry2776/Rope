@@ -1336,8 +1336,9 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
+            kpss = np.array(kpss)
 
-        return det, kpss_5, np.array(kpss)
+        return det, kpss_5, kpss
 
     def detect_scrdf(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
@@ -1592,8 +1593,9 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
+            kpss = np.array(kpss)
 
-        return det, kpss_5, np.array(kpss)
+        return det, kpss_5, kpss
 
     def detect_yoloface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
@@ -1823,8 +1825,9 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
+            kpss = np.array(kpss)
 
-        return det, kpss_5, np.array(kpss)
+        return det, kpss_5, kpss
 
     def detect_yunet(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
@@ -2070,8 +2073,9 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
+            kpss = np.array(kpss)
 
-        return det, kpss_5, np.array(kpss)
+        return det, kpss_5, kpss
 
     def detect_face_landmark_5(self, img, bbox, det_kpss, from_points=False):
         if from_points == False:
