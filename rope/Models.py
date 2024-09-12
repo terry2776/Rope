@@ -2595,12 +2595,12 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_motion_extractor_model:
-                    if not os.path.exists("./models/liveportrait_onnx/motion_extractor.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/motion_extractor." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/motion_extractor.onnx",
                                  trt_model_path=None, precision="fp32",
                                  verbose=False
                                 )
-                    self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor.trt", pool_size=self.nThreads)
+                    self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads)
 
             motion_extractor_model = self.lp_motion_extractor_model
 
@@ -2686,12 +2686,12 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_appearance_feature_extractor_model or not isinstance(self.lp_appearance_feature_extractor_model, TensorRTPredictor):
-                    if not os.path.exists("./models/liveportrait_onnx/appearance_feature_extractor.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/appearance_feature_extractor." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/appearance_feature_extractor.onnx",
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor.trt", pool_size=self.nThreads)
+                    self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads)
 
             appearance_feature_extractor_model = self.lp_appearance_feature_extractor_model
 
@@ -2743,12 +2743,12 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_stitching_eye_model or not isinstance(self.lp_stitching_eye_model, TensorRTPredictor):
-                    if not os.path.exists("./models/liveportrait_onnx/stitching_eye.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/stitching_eye." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/stitching_eye.onnx",
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye.trt", pool_size=self.nThreads)
+                    self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye." + trt.__version__ + ".trt", pool_size=self.nThreads)
 
             stitching_eye_model = self.lp_stitching_eye_model
 
@@ -2793,12 +2793,12 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_stitching_lip_model or not isinstance(self.lp_stitching_lip_model, TensorRTPredictor):
-                    if not os.path.exists("./models/liveportrait_onnx/stitching_lip.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/stitching_lip." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/stitching_lip.onnx",
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip.trt", pool_size=self.nThreads)
+                    self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip." + trt.__version__ + ".trt", pool_size=self.nThreads)
 
             stitching_lip_model = self.lp_stitching_lip_model
 
@@ -2843,12 +2843,12 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_stitching_model or not isinstance(self.lp_stitching_model, TensorRTPredictor):
-                    if not os.path.exists("./models/liveportrait_onnx/stitching.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/stitching." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/stitching.onnx",
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching.trt", pool_size=self.nThreads)
+                    self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching." + trt.__version__ + ".trt", pool_size=self.nThreads)
 
             stitching_model = self.lp_stitching_model
 
@@ -2913,13 +2913,13 @@ class Models():
         if self.provider_name == "TensorRT-Engine":
             if face_editor_type == 'Human-Face':
                 if not self.lp_warping_spade_fix_model or not isinstance(self.lp_warping_spade_fix_model, TensorRTPredictor):
-                    if not os.path.exists("./models/liveportrait_onnx/warping_spade-fix.trt"):
+                    if not os.path.exists("./models/liveportrait_onnx/warping_spade-fix." + trt.__version__ + ".trt"):
                         onnx2trt(onnx_model_path="./models/liveportrait_onnx/warping_spade-fix.onnx",
                                  trt_model_path=None, precision="fp16",
                                  custom_plugin_path="./models/grid_sample_3d_plugin.dll",
                                  verbose=False
                                 )
-                    self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix.trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll", pool_size=self.nThreads)
+                    self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix." + trt.__version__ + ".trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll", pool_size=self.nThreads)
 
             warping_spade_model = self.lp_warping_spade_fix_model
 
