@@ -1783,6 +1783,8 @@ class GUI(tk.Tk):
             elif name=='WebCamBackendSel':
                 self.add_action('change_webcam_resolution_and_fps')
                 self.populate_target_videos()
+            elif name=='ThreadsSlider':
+                self.models.set_number_of_threads(self.parameters[name])
             # Face Editor
             '''
             elif mode=='parameter_face_editor':
@@ -2051,6 +2053,8 @@ class GUI(tk.Tk):
                                 provider_value = self.models.switch_providers_priority(temp[key])
                                 if provider_value != temp[key]:
                                     self.parameters[key] = provider_value
+                            elif key == "ThreadsSlider":
+                                self.models.set_number_of_threads(value)
                     except KeyError:
                         pass
 
@@ -3406,6 +3410,8 @@ class GUI(tk.Tk):
                 else:
                     self.models.delete_models()
                     torch.cuda.empty_cache()
+            elif key == "ThreadsSlider":
+                self.models.set_number_of_threads(value)
 
         for key, value in self.parameters_face_editor.items():
             self.widget[key].set(value, request_frame=False)

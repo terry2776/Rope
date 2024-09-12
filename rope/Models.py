@@ -374,6 +374,7 @@ class Models():
         self.lp_mask_crop = faceutil.create_faded_inner_mask(size=(512, 512), border_thickness=5, fade_thickness=15, blur_radius=5, device='cuda')
         self.lp_mask_crop = torch.unsqueeze(self.lp_mask_crop, 0)
         self.lp_mask_crop = torch.mul(self.lp_mask_crop, 255.)
+        self.nThreads = 5
 
     def switch_providers_priority(self, provider_name):
         match provider_name:
@@ -411,6 +412,10 @@ class Models():
         self.provider_name = provider_name
 
         return self.provider_name
+
+    def set_number_of_threads(self, value):
+        self.nThreads = value
+        self.delete_trt_models(True)
 
     def get_gpu_memory(self):
         command = "nvidia-smi --query-gpu=memory.total --format=csv"
@@ -591,49 +596,63 @@ class Models():
         self.faceparser_model = []
         self.dfl_model = []
         self.dfl_models = {}
+        self.delete_trt_models(False)
 
+    def delete_trt_models(self, trt_models_only=False):
         # Face Editor
         if isinstance(self.lp_motion_extractor_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_motion_extractor_model.cleanup()
-
-        del self.lp_motion_extractor_model
-        self.lp_motion_extractor_model = None
+            del self.lp_motion_extractor_model
+            self.lp_motion_extractor_model = None
+        elif not trt_models_only:
+            del self.lp_motion_extractor_model
+            self.lp_motion_extractor_model = None
 
         if isinstance(self.lp_appearance_feature_extractor_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_appearance_feature_extractor_model.cleanup()
-
-        del self.lp_appearance_feature_extractor_model
-        self.lp_appearance_feature_extractor_model = None
+            del self.lp_appearance_feature_extractor_model
+            self.lp_appearance_feature_extractor_model = None
+        elif not trt_models_only:
+            del self.lp_appearance_feature_extractor_model
+            self.lp_appearance_feature_extractor_model = None
 
         if isinstance(self.lp_stitching_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_stitching_model.cleanup()
-
-        del self.lp_stitching_model
-        self.lp_stitching_model = None
+            del self.lp_stitching_model
+            self.lp_stitching_model = None
+        elif not trt_models_only:
+            del self.lp_stitching_model
+            self.lp_stitching_model = None
 
         if isinstance(self.lp_stitching_eye_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_stitching_eye_model.cleanup()
-
-        del self.lp_stitching_eye_model
-        self.lp_stitching_eye_model = None
+            del self.lp_stitching_eye_model
+            self.lp_stitching_eye_model = None
+        elif not trt_models_only:
+            del self.lp_stitching_eye_model
+            self.lp_stitching_eye_model = None
 
         if isinstance(self.lp_stitching_lip_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_stitching_lip_model.cleanup()
-
-        del self.lp_stitching_lip_model
-        self.lp_stitching_lip_model = None
+            del self.lp_stitching_lip_model
+            self.lp_stitching_lip_model = None
+        elif not trt_models_only:
+            del self.lp_stitching_lip_model
+            self.lp_stitching_lip_model = None
 
         if isinstance(self.lp_warping_spade_fix_model, TensorRTPredictor):
             # È un'istanza di TensorRTPredictor
             self.lp_warping_spade_fix_model.cleanup()
-
-        del self.lp_warping_spade_fix_model
-        self.lp_warping_spade_fix_model = None
+            del self.lp_warping_spade_fix_model
+            self.lp_warping_spade_fix_model = None
+        elif not trt_models_only:
+            del self.lp_warping_spade_fix_model
+            self.lp_warping_spade_fix_model = None
 
     def run_recognize(self, img, kps, similarity_type='Opal', face_swapper_model='Inswapper128'):
         if face_swapper_model == 'Inswapper128':
@@ -2581,7 +2600,7 @@ class Models():
                                  trt_model_path=None, precision="fp32",
                                  verbose=False
                                 )
-                    self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor.trt")
+                    self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor.trt", pool_size=self.nThreads)
 
             motion_extractor_model = self.lp_motion_extractor_model
 
@@ -2672,7 +2691,7 @@ class Models():
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor.trt")
+                    self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor.trt", pool_size=self.nThreads)
 
             appearance_feature_extractor_model = self.lp_appearance_feature_extractor_model
 
@@ -2729,7 +2748,7 @@ class Models():
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye.trt")
+                    self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye.trt", pool_size=self.nThreads)
 
             stitching_eye_model = self.lp_stitching_eye_model
 
@@ -2779,7 +2798,7 @@ class Models():
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip.trt")
+                    self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip.trt", pool_size=self.nThreads)
 
             stitching_lip_model = self.lp_stitching_lip_model
 
@@ -2829,7 +2848,7 @@ class Models():
                                  trt_model_path=None, precision="fp16",
                                  verbose=False
                                 )
-                    self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching.trt")
+                    self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching.trt", pool_size=self.nThreads)
 
             stitching_model = self.lp_stitching_model
 
@@ -2900,7 +2919,7 @@ class Models():
                                  custom_plugin_path="./models/grid_sample_3d_plugin.dll",
                                  verbose=False
                                 )
-                    self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix.trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll")
+                    self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix.trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll", pool_size=self.nThreads)
 
             warping_spade_model = self.lp_warping_spade_fix_model
 
