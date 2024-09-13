@@ -1,6 +1,18 @@
 ![image](https://github.com/Alucard24/Rope/releases/download/splash/splash_next.png)
 
-Next-0.8.24
+Next(Stable)-1.1.03
+
+Changes:
+Apply edit faces only if named parameters are not as default.
+Migrate to TensorRT 10.4.0.
+Update onnxruntime-gpu requirements_cu124 to 1.19.2 version.
+Update requirements and requirements_cu124 to support TensorRT 10.4.0.
+TensorRT 10.4.0 binary files need to be installed following the guide on NVIDIA official site.
+
+Bug Fixes:
+Use dtype=object for kpss to manage elements of variable length.
+
+Next(Stable)-1.1.02
 Contributors: @argenspin
 
 New Features:
@@ -16,7 +28,7 @@ Better TensorRT-Engine models detection.
 kpss variable must be an array not a list.
 Always add to kpss, regardless of the length of landmark_kpss.
 
-Next-0.8.23
+Next(Stable)-1.1.01
 Contributors: @KwaiVGI, @warmshao, @argenspin
 
 New Features:
