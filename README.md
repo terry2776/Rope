@@ -1,6 +1,6 @@
 ![image](https://github.com/Alucard24/Rope/releases/download/splash/splash_next.png)
 
-Next(Stable)-1.1.03
+Next(Stable)-1.1.02
 
 Changes:
 Apply edit faces only if named parameters are not as default.
@@ -12,7 +12,7 @@ TensorRT 10.4.0 binary files need to be installed following the guide on NVIDIA 
 Bug Fixes:
 Use dtype=object for kpss to manage elements of variable length.
 
-Next(Stable)-1.1.02
+Next(Stable)-1.1.01
 Contributors: @argenspin
 
 New Features:
@@ -28,7 +28,7 @@ Better TensorRT-Engine models detection.
 kpss variable must be an array not a list.
 Always add to kpss, regardless of the length of landmark_kpss.
 
-Next(Stable)-1.1.01
+Next(Stable)-1.1.00
 Contributors: @KwaiVGI, @warmshao, @argenspin
 
 New Features:
