@@ -1352,7 +1352,7 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
-            kpss = np.array(kpss)
+            kpss = np.array(kpss, dtype=object)
 
         return det, kpss_5, kpss
 
@@ -1610,7 +1610,7 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
-            kpss = np.array(kpss)
+            kpss = np.array(kpss, dtype=object)
 
         return det, kpss_5, kpss
 
@@ -1843,7 +1843,7 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
-            kpss = np.array(kpss)
+            kpss = np.array(kpss, dtype=object)
 
         return det, kpss_5, kpss
 
@@ -2092,7 +2092,7 @@ class Models():
                             kpss_5[i] = landmark_kpss_5
                     else:
                         kpss_5[i] = landmark_kpss_5
-            kpss = np.array(kpss)
+            kpss = np.array(kpss, dtype=object)
 
         return det, kpss_5, kpss
 
