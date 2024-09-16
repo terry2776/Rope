@@ -2527,14 +2527,14 @@ class GUI(tk.Tk):
                         self.add_action("load_target_image", face["file"])
                         self.image_loaded = True
 
-        if self.source_faces[button]['DFLModel']:
-            # Clear DFL models from memory
-            if self.models.dfl_models and self.parameters['DFLLoadOnlyOneSwitch']:
-                for model in list(self.models.dfl_models):
-                    if model!=self.source_faces[button]['DFLModel']:
-                        del self.models.dfl_models[model]._sess
-                        del self.models.dfl_models[model]
-                gc.collect()
+            if self.source_faces[button]['DFLModel']:
+                # Clear DFL models from memory
+                if self.models.dfl_models and self.parameters['DFLLoadOnlyOneSwitch']:
+                    for model in list(self.models.dfl_models):
+                        if model!=self.source_faces[button]['DFLModel']:
+                            del self.models.dfl_models[model]._sess
+                            del self.models.dfl_models[model]
+                    gc.collect()
 
         # Assign all active input faces to the active target face
         for tface in self.target_faces:
