@@ -117,7 +117,7 @@ def change_extension(file_path, new_extension, version=None):
     """
     # Remove leading '.' from the new extension if present
     new_extension = new_extension.lstrip('.')
-    
+
     # Create the new file path with the version before the extension, if provided
     if version:
         new_file_path = Path(file_path).with_suffix(f'.{version}.{new_extension}')

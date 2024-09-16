@@ -203,7 +203,7 @@ class TensorRTPredictor:
             for name, tensor in self.tensors.items():
                 assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
                 context.set_tensor_address(name, tensor.data_ptr())
-            
+
             nvtx.range_pop()
 
             # Prepara i binding per execute_v2()
@@ -242,7 +242,7 @@ class TensorRTPredictor:
             for name, tensor in self.tensors.items():
                 assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
                 context.set_tensor_address(name, tensor.data_ptr())
-            
+
             nvtx.range_pop()
 
             # Esecuzione asincrona con execute_async_v3()

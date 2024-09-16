@@ -763,93 +763,100 @@ def yuv_to_rgb(image, normalize=False):
     return rgb_image
 
 def rgb_to_lab(rgb, normalize=False):
+    # Assume rgb is in (C, H, W) format and values are in [0, 1]
     if normalize:
-        # Normalizzazione RGB a [0, 1]
-        rgb = torch.div(rgb.type(torch.float32), 255.0)
+        rgb = rgb / 255.0
 
-    # Linearizzazione dei valori RGB
+    # Transpose to (H, W, C) for processing
+    rgb = rgb.permute(1, 2, 0).contiguous()
+
+    # Linearization (Gamma Correction)
     mask = rgb > 0.04045
-    rgb[mask] = torch.pow((rgb[mask] + 0.055) / 1.055, 2.4)
-    rgb[~mask] = rgb[~mask] / 12.92
+    rgb_linear = torch.where(mask, ((rgb + 0.055) / 1.055) ** 2.4, rgb / 12.92)
 
-    # Conversione da RGB a XYZ
+    # Conversion from RGB to XYZ
+    rgb_linear = rgb_linear.view(-1, 3)
     matrix_rgb_to_xyz = torch.tensor([
         [0.4124564, 0.3575761, 0.1804375],
         [0.2126729, 0.7151522, 0.0721750],
         [0.0193339, 0.1191920, 0.9503041]
     ], dtype=rgb.dtype, device=rgb.device)
 
-    rgb = rgb.permute(1, 2, 0).contiguous()
-    xyz = torch.matmul(rgb.view(-1, 3), matrix_rgb_to_xyz.T).view(rgb.shape)
+    xyz = torch.matmul(rgb_linear, matrix_rgb_to_xyz.T)
 
-    # Normalizzazione XYZ
+    # Normalize by D65 white point
     white_point = torch.tensor([0.95047, 1.00000, 1.08883], dtype=xyz.dtype, device=xyz.device)
     xyz = xyz / white_point
 
-    # Conversione da XYZ a LAB
+    # Conversion from XYZ to LAB
     epsilon = 0.008856
     kappa = 903.3
 
     mask = xyz > epsilon
-    xyz[mask] = torch.pow(xyz[mask], 1/3)
-    xyz[~mask] = (kappa * xyz[~mask] + 16) / 116
+    f_xyz = torch.where(mask, xyz ** (1/3), (kappa * xyz + 16) / 116)
 
-    L = 116 * xyz[:, :, 1] - 16
-    a = 500 * (xyz[:, :, 0] - xyz[:, :, 1])
-    b = 200 * (xyz[:, :, 1] - xyz[:, :, 2])
+    L = (116 * f_xyz[:, 1]) - 16
+    a = 500 * (f_xyz[:, 0] - f_xyz[:, 1])
+    b = 200 * (f_xyz[:, 1] - f_xyz[:, 2])
 
-    lab = torch.stack([L, a, b], dim=2).permute(2, 0, 1)
+    lab = torch.stack([L, a, b], dim=1)
+    lab = lab.view(rgb.shape[0], rgb.shape[1], 3)  # (H, W, 3)
+    lab = lab.permute(2, 0, 1)  # Back to (C, H, W)
+
     return lab
 
 def lab_to_rgb(lab, normalize=False):
+    # Assume lab is in (C, H, W) format
     if lab.dim() != 3 or lab.shape[0] != 3:
         raise ValueError("LAB tensor must have shape (3, H, W)")
 
-    L = lab[0, :, :]
-    A = lab[1, :, :]
-    B = lab[2, :, :]
+    # Transpose to (H, W, C)
+    lab = lab.permute(1, 2, 0).contiguous()
 
-    # Conversione da LAB a XYZ
+    L = lab[:, :, 0]
+    a = lab[:, :, 1]
+    b = lab[:, :, 2]
+
+    # Conversion from LAB to XYZ
     epsilon = 0.008856
     kappa = 903.3
 
-    fy = (L + 16.0) / 116.0
-    fx = A / 500.0 + fy
-    fz = fy - B / 200.0
+    fy = (L + 16) / 116
+    fx = fy + (a / 500)
+    fz = fy - (b / 200)
 
     fx3 = fx ** 3
     fz3 = fz ** 3
-    x = torch.where(fx3 > epsilon, fx3, (116.0 * fx - 16.0) / kappa)
-    y = torch.where(L > (kappa * epsilon), ((L + 16.0) / 116.0) ** 3, L / kappa)
-    z = torch.where(fz3 > epsilon, fz3, (116.0 * fz - 16.0) / kappa)
 
-    # White point normalization
+    x = torch.where(fx3 > epsilon, fx3, (116 * fx - 16) / kappa)
+    y = torch.where(L > (kappa * epsilon), ((L + 16) / 116) ** 3, L / kappa)
+    z = torch.where(fz3 > epsilon, fz3, (116 * fz - 16) / kappa)
+
+    # Denormalize by D65 white point
     white_point = torch.tensor([0.95047, 1.00000, 1.08883], dtype=lab.dtype, device=lab.device)
-    xyz = torch.stack([x, y, z], dim=0) * white_point[:, None, None]
+    xyz = torch.stack([x, y, z], dim=2) * white_point
 
-    # Conversione da XYZ a RGB
+    # Conversion from XYZ to RGB
+    xyz = xyz.view(-1, 3)
     matrix_xyz_to_rgb = torch.tensor([
         [ 3.2404542, -1.5371385, -0.4985314],
         [-0.9692660,  1.8760108,  0.0415560],
         [ 0.0556434, -0.2040259,  1.0572252]
     ], dtype=lab.dtype, device=lab.device)
 
-    # Reshape for matrix multiplication
-    xyz_flat = xyz.view(3, -1)  # (3, H*W)
-    rgb_flat = torch.matmul(matrix_xyz_to_rgb, xyz_flat)  # (3, H*W)
+    rgb_linear = torch.matmul(xyz, matrix_xyz_to_rgb.T)
 
-    # Reshape back to (3, H, W)
-    rgb = rgb_flat.view(3, lab.shape[1], lab.shape[2])
+    # Apply gamma correction
+    mask = rgb_linear > 0.0031308
+    rgb = torch.where(mask, 1.055 * (rgb_linear ** (1 / 2.4)) - 0.055, 12.92 * rgb_linear)
 
-    # Correzione gamma
-    mask = rgb > 0.0031308
-    rgb[mask] = 1.055 * torch.pow(rgb[mask], 1.0 / 2.4) - 0.055
-    rgb[~mask] = 12.92 * rgb[~mask]
-
-    rgb = torch.clamp(rgb, 0, 1)
+    # Reshape back to image format
+    rgb = rgb.view(lab.shape[0], lab.shape[1], 3)
+    rgb = torch.clamp(rgb, 0.0, 1.0)
+    rgb = rgb.permute(2, 0, 1)  # Back to (C, H, W)
 
     if normalize:
-        rgb = torch.mul(rgb, 255.0)
+        rgb = rgb * 255.0
 
     return rgb
 
@@ -1541,3 +1548,398 @@ def concat_feat(kp_source: torch.Tensor, kp_driving: torch.Tensor) -> torch.Tens
 
     feat = torch.cat([kp_source.view(bs_src, -1), kp_driving.view(bs_dri, -1)], dim=1)
     return feat
+
+def apply_laplace_filter(img):
+    # Definiere den Laplace-Kernel
+    laplace_kernel = torch.tensor([[0,  1, 0],
+                                   [1, -4, 1],
+                                   [0,  1, 0]], dtype=torch.float32, device=img.device).unsqueeze(0).unsqueeze(0)
+
+    # Erweitere den Graustufen-Bild-Tensor für Faltung (Batches und Kanäle hinzufügen)
+    img = img.unsqueeze(0).unsqueeze(0)  # (1, 1, H, W) für die Faltung
+    # Faltung mit dem Laplace-Kernel durchführen
+    laplacian = torch.nn.functional.conv2d(img, laplace_kernel, padding=1)
+
+    return laplacian.squeeze(0).squeeze(0)  # (H, W)
+
+def jpegBlur(img, q):
+    device = img.device  # Original device (CPU or GPU)
+
+    # Ensure the image is in [C, H, W] format
+    if img.dim() != 3 or img.size(0) != 3:
+        raise ValueError("Image must have shape [3, H, W].")
+
+    # Convert to uint8 if necessary
+    if img.dtype == torch.float32:
+        img_uint8 = img.type(torch.uint8).cpu()
+    elif img.dtype == torch.uint8:
+        img_uint8 = img.cpu()
+    else:
+        raise ValueError("Unsupported image data type.")
+
+    # Encode JPEG (works on CPU)
+    buffer = torchvision.io.encode_jpeg(img_uint8, quality=q)
+
+    # Decode JPEG (input must be on CPU when using nvjpeg)
+    img_blurred = torchvision.io.decode_jpeg(buffer)
+
+    # Move back to the original device
+    img_blurred = img_blurred.to(device).type(torch.float32)
+
+    return img_blurred
+
+def histogram_matching(source_image, target_image, diffslider):
+    # Determine the device (CPU or GPU)
+    device = source_image.device
+
+    # Convert images to float tensors in range [0, 1], shape (C, H, W)
+    source_image_t = source_image.float().to(device) / 255.0  # (C, H, W)
+    target_image_t = target_image.float().to(device) / 255.0  # (C, H, W)
+
+    matched_target_image_t = target_image_t.clone()
+
+    bin_edges = torch.linspace(0.0, 1.0, steps=257, device=device)  # 257 edges for 256 bins
+
+    for channel in range(3):
+        source_channel = source_image_t[channel, :, :]  # Shape: (H, W)
+        target_channel = target_image_t[channel, :, :]
+
+        # Compute histograms
+        source_hist = torch.histc(source_channel, bins=256, min=0.0, max=1.0)
+        target_hist = torch.histc(target_channel, bins=256, min=0.0, max=1.0)
+
+        # Compute probability mass functions (PMFs)
+        source_pmf = source_hist / source_hist.sum()
+        target_pmf = target_hist / target_hist.sum()
+
+        # Compute cumulative distribution functions (CDFs)
+        source_cdf = torch.cumsum(source_pmf, dim=0)
+        target_cdf = torch.cumsum(target_pmf, dim=0)
+
+        # Flatten the target channel for interpolation
+        target_channel_flat = target_channel.flatten()
+
+        # Interpolate target pixel values to get their CDF values
+        interp_t_values = interp1d(
+            target_channel_flat, bin_edges[:-1], target_cdf, device=device
+        )
+
+        # Invert the source CDF to get matched pixel values
+        matched_channel_flat = interp1d_inverse(
+            interp_t_values, source_cdf, bin_edges[:-1], device=device
+        )
+
+        # Reshape back to original image shape
+        matched_channel = matched_channel_flat.reshape(target_channel.shape)
+
+        # Update the matched image
+        matched_target_image_t[channel, :, :] = matched_channel
+
+    # Blend the images according to diffslider
+    alpha = diffslider / 100.0
+    final_image_t = (1 - alpha) * target_image_t + alpha * matched_target_image_t
+
+    # Scale back to [0, 255] and clip
+    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
+
+    # Ensure it's on the original device and has type float
+    final_image_tensor = final_image_t.to(device).float()
+
+    return final_image_tensor
+
+def histogram_matching_withmask(source_image, target_image, mask, diffslider):
+    # Determine the device (CPU or GPU)
+    device = source_image.device
+
+    # Convert images to float tensors in range [0, 1], shape (C, H, W)
+    source_image_t = source_image.float().to(device) / 255.0  # (C, H, W)
+    target_image_t = target_image.float().to(device) / 255.0  # (C, H, W)
+    mask_t = mask.float().to(device)
+
+    # Apply histogram matching only to the masked areas
+    matched_target_image_t = target_image_t.clone()
+
+    # Define the condition for the mask
+    valid_mask = (mask_t > 0.2)  # Shape: (1, H, W) or (H, W)
+
+    # Remove channel dimension from mask if present
+    if valid_mask.dim() == 3 and valid_mask.size(0) == 1:
+        valid_mask = valid_mask.squeeze(0)
+
+    # Create bin edges for histograms
+    bin_edges = torch.linspace(0.0, 1.0, steps=257, device=device)  # 257 edges for 256 bins
+
+    for channel in range(3):
+        source_channel = source_image_t[channel, :, :]  # Shape: (H, W)
+        target_channel = target_image_t[channel, :, :]
+
+        # Extract masked values
+        masked_source_values = source_channel[valid_mask]
+        masked_target_values = target_channel[valid_mask]
+
+        # Remove NaNs and Infs
+        masked_source_values = masked_source_values[~torch.isnan(masked_source_values)]
+        masked_source_values = masked_source_values[~torch.isinf(masked_source_values)]
+        masked_target_values = masked_target_values[~torch.isnan(masked_target_values)]
+        masked_target_values = masked_target_values[~torch.isinf(masked_target_values)]
+
+        # Check if masked values are empty
+        if masked_source_values.numel() == 0 or masked_target_values.numel() == 0:
+            print(f"No valid masked pixels for channel {channel}. Skipping histogram matching for this channel.")
+            continue
+
+        # Ensure values are within [0.0, 1.0]
+        masked_source_values = torch.clamp(masked_source_values, 0.0, 1.0)
+        masked_target_values = torch.clamp(masked_target_values, 0.0, 1.0)
+
+        # Compute histograms
+        source_hist = torch.histc(masked_source_values, bins=256, min=0.0, max=1.0)
+        target_hist = torch.histc(masked_target_values, bins=256, min=0.0, max=1.0)
+
+        # Add epsilon to histogram counts to prevent zeros
+        source_hist += 1e-6
+        target_hist += 1e-6
+
+        # Compute probability mass functions (PMFs)
+        source_hist_sum = source_hist.sum()
+        target_hist_sum = target_hist.sum()
+        if source_hist_sum == 0 or target_hist_sum == 0:
+            print(f"Histogram sum is zero for channel {channel}. Skipping histogram matching for this channel.")
+            continue
+
+        source_pmf = source_hist / source_hist_sum
+        target_pmf = target_hist / target_hist_sum
+
+        # Compute cumulative distribution functions (CDFs)
+        source_cdf = torch.cumsum(source_pmf, dim=0)
+        target_cdf = torch.cumsum(target_pmf, dim=0)
+
+        # Ensure CDFs are strictly increasing
+        source_cdf = torch.maximum(source_cdf, torch.cummax(source_cdf, dim=0)[0])
+        target_cdf = torch.maximum(target_cdf, torch.cummax(target_cdf, dim=0)[0])
+
+        # Check for NaNs or Infs in CDFs
+        if torch.isnan(source_cdf).any() or torch.isinf(source_cdf).any():
+            print(f"Channel {channel}: source_cdf contains NaN or Inf values. Skipping histogram matching for this channel.")
+            continue
+
+        # Flatten the target channel for interpolation
+        target_channel_flat = target_channel.flatten()
+
+        # Interpolate target pixel values to get their CDF values
+        interp_t_values = interp1d(
+            target_channel_flat, bin_edges[:-1], target_cdf, device=device
+        )
+
+        # Invert the source CDF to get matched pixel values
+        matched_channel_flat = interp1d_inverse(
+            interp_t_values, source_cdf, bin_edges[:-1], device=device
+        )
+
+        # Reshape back to original image shape
+        matched_channel = matched_channel_flat.reshape(target_channel.shape)
+
+        # Apply the mapping only to the valid areas
+        matched_target_image_t[channel, :, :][valid_mask] = matched_channel[valid_mask]
+
+    # Blend the images according to diffslider
+    alpha = diffslider / 100.0
+    final_image_t = (1 - alpha) * target_image_t + alpha * matched_target_image_t
+
+    # Scale back to [0, 255] and clip
+    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
+
+    # Ensure it's on the original device and has type float
+    final_image_tensor = final_image_t.to(device).float()
+
+    return final_image_tensor
+
+def interp1d(x, xp, fp, device='cpu'):
+    # Ensure xp is increasing
+    assert torch.all(xp[1:] >= xp[:-1]), "xp must be increasing"
+
+    # Move tensors to the specified device and make them contiguous
+    x = x.to(device).contiguous()
+    xp = xp.to(device).contiguous()
+    fp = fp.to(device)
+
+    # Find indices in xp for each x
+    indices = torch.searchsorted(xp, x, right=True) - 1
+    indices = indices.clamp(0, len(xp) - 2)
+
+    x0 = xp[indices]
+    x1 = xp[indices + 1]
+    y0 = fp[indices]
+    y1 = fp[indices + 1]
+
+    # Compute the slope
+    slope = (y1 - y0) / (x1 - x0 + 1e-6)  # Add epsilon to prevent division by zero
+
+    # Compute the interpolated values
+    y = y0 + slope * (x - x0)
+
+    # Handle edge cases
+    y = torch.where(x < xp[0], fp[0], y)
+    y = torch.where(x > xp[-1], fp[-1], y)
+
+    return y
+
+def interp1d_inverse(y, fp, xp, device='cpu'):
+    # Ensure fp is increasing
+    assert torch.all(fp[1:] >= fp[:-1]), "fp must be increasing"
+
+    # Move tensors to the specified device and make them contiguous
+    y = y.to(device).contiguous()
+    fp = fp.to(device).contiguous()
+    xp = xp.to(device)
+
+    # Find indices in fp for each y
+    indices = torch.searchsorted(fp, y, right=True) - 1
+    indices = indices.clamp(0, len(fp) - 2)
+
+    y0 = fp[indices]
+    y1 = fp[indices + 1]
+    x0 = xp[indices]
+    x1 = xp[indices + 1]
+
+    # Compute the slope
+    slope = (x1 - x0) / (y1 - y0 + 1e-6)  # Add epsilon to prevent division by zero
+
+    # Compute the interpolated values
+    x = x0 + slope * (y - y0)
+
+    # Handle edge cases
+    x = torch.where(y < fp[0], xp[0], x)
+    x = torch.where(y > fp[-1], xp[-1], x)
+
+    return x
+
+def histogram_matching_DFL_test(source_image, target_image, diffslider):
+    device = source_image.device
+    epsilon = 1e-6  # Small value to prevent division by zero
+
+    # Convert images to float tensors in range [0, 1], shape (C, H, W)
+    source_image_t = source_image.float().to(device) / 255.0  # (C, H, W)
+    target_image_t = target_image.float().to(device) / 255.0
+
+    # Convert images from RGB to LAB (assuming functions accept (C, H, W))
+    source_lab = rgb_to_lab(source_image_t, False)
+    target_lab = rgb_to_lab(target_image_t, False)
+
+    # Split LAB channels
+    source_L = source_lab[0, :, :]  # Shape: (H, W)
+    source_A = source_lab[1, :, :]
+    source_B = source_lab[2, :, :]
+
+    target_L = target_lab[0, :, :]
+    target_A = target_lab[1, :, :]
+    target_B = target_lab[2, :, :]
+
+    # Compute means and standard deviations for each channel
+    source_L_mean, source_L_std = source_L.mean(), source_L.std()
+    source_A_mean, source_A_std = source_A.mean(), source_A.std()
+    source_B_mean, source_B_std = source_B.mean(), source_B.std()
+
+    target_L_mean, target_L_std = target_L.mean(), target_L.std()
+    target_A_mean, target_A_std = target_A.mean(), target_A.std()
+    target_B_mean, target_B_std = target_B.mean(), target_B.std()
+
+    # Perform color transfer
+    target_L = (target_L - target_L_mean) * (source_L_std / (target_L_std + epsilon)) + source_L_mean
+    target_A = (target_A - target_A_mean) * (source_A_std / (target_A_std + epsilon)) + source_A_mean
+    target_B = (target_B - target_B_mean) * (source_B_std / (target_B_std + epsilon)) + source_B_mean
+
+    # Clip the channels to valid ranges
+    target_L = torch.clamp(target_L, 0, 100)
+    target_A = torch.clamp(target_A, -127, 127)
+    target_B = torch.clamp(target_B, -127, 127)
+
+    # Stack the channels back together (C, H, W)
+    matched_lab = torch.stack([target_L, target_A, target_B], dim=0)
+
+    # Convert back to RGB
+    matched_rgb = lab_to_rgb(matched_lab, False)
+
+    # Clamp to [0, 1] to ensure valid pixel values
+    matched_rgb = torch.clamp(matched_rgb, 0.0, 1.0)
+
+    # Blend the images according to diffslider
+    alpha = diffslider / 100.0
+    final_image_t = (1 - alpha) * target_image_t + alpha * matched_rgb
+
+    # Scale back to [0, 255] and clip
+    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
+
+    # Ensure it's on the original device and has type float
+    final_image_tensor = final_image_t.to(device).float()
+
+    return final_image_tensor
+
+def histogram_matching_DFL_Orig(source_image, target_image, mask, diffslider):
+    device = source_image.device
+    epsilon = 1e-6
+    mask_cutoff = 0.2
+
+    # Convert images to float tensors in range [0, 1]
+    source_image_t = source_image.float().to(device) / 255.0
+    target_image_t = target_image.float().to(device) / 255.0
+    mask_t = mask.float().to(device)
+
+    # Prepare mask
+    if mask_t.dim() == 3 and mask_t.shape[0] == 1:
+        mask_t = mask_t.squeeze(0)
+    elif mask_t.dim() != 2:
+        raise ValueError("Mask must have shape (1, H, W) or (H, W)")
+    valid_mask = (mask_t >= mask_cutoff)
+
+    # Convert images to LAB
+    source_lab = rgb_to_lab(source_image_t, False)
+    target_lab = rgb_to_lab(target_image_t, False)
+
+    # Extract LAB channels
+    source_L, source_A, source_B = source_lab[0], source_lab[1], source_lab[2]
+    target_L, target_A, target_B = target_lab[0], target_lab[1], target_lab[2]
+
+    # Compute statistics over the entire image
+    source_L_mean, source_L_std = source_L.mean(), source_L.std()
+    source_A_mean, source_A_std = source_A.mean(), source_A.std()
+    source_B_mean, source_B_std = source_B.mean(), source_B.std()
+
+    target_L_mean, target_L_std = target_L.mean(), target_L.std()
+    target_A_mean, target_A_std = target_A.mean(), target_A.std()
+    target_B_mean, target_B_std = target_B.mean(), target_B.std()
+
+    # Prepare adjusted channels
+    target_L_adjusted = target_L.clone()
+    target_A_adjusted = target_A.clone()
+    target_B_adjusted = target_B.clone()
+
+    # Apply adjustments only within the masked areas
+    target_L_adjusted[valid_mask] = (target_L[valid_mask] - target_L_mean) * \
+        (source_L_std / (target_L_std + epsilon)) + source_L_mean
+    target_A_adjusted[valid_mask] = (target_A[valid_mask] - target_A_mean) * \
+        (source_A_std / (target_A_std + epsilon)) + source_A_mean
+    target_B_adjusted[valid_mask] = (target_B[valid_mask] - target_B_mean) * \
+        (source_B_std / (target_B_std + epsilon)) + source_B_mean
+
+    # Clip adjusted channels
+    target_L_adjusted = torch.clamp(target_L_adjusted, 0, 100)
+    target_A_adjusted = torch.clamp(target_A_adjusted, -127, 127)
+    target_B_adjusted = torch.clamp(target_B_adjusted, -127, 127)
+
+    # Stack adjusted channels
+    matched_lab = torch.stack([target_L_adjusted, target_A_adjusted, target_B_adjusted], dim=0)
+
+    # Convert back to RGB
+    matched_rgb = lab_to_rgb(matched_lab, False)
+    matched_rgb = torch.clamp(matched_rgb, 0.0, 1.0)
+
+    # Blend images
+    alpha = diffslider / 100.0
+    final_image_t = (1 - alpha) * target_image_t + alpha * matched_rgb
+
+    # Scale back to [0, 255]
+    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
+    final_image_tensor = final_image_t.to(device).float()
+
+    return final_image_tensor
