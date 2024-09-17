@@ -405,7 +405,7 @@ class GUI(tk.Tk):
             shortcuts["Previous Marker"]: lambda: self.update_marker('prev'),
             shortcuts["Next Marker"]: lambda: self.update_marker('next'),
             shortcuts["Toggle Restorer"]: lambda: self.toggle_and_update('Restorer', 'Restorer'),
-            #shortcuts["Toggle Restorer2"]: lambda: self.toggle_and_update('Restorer2', 'Restorer2'),
+            shortcuts["Toggle Restorer2"]: lambda: self.toggle_and_update('Restorer2', 'Restorer2'),
             shortcuts["Toggle Orientation"]: lambda: self.toggle_and_update('Orient', 'Orientation'),
             shortcuts["Toggle Strength"]: lambda: self.toggle_and_update('Strength', 'Strength'),
             shortcuts["Toggle Differencing"]: lambda: self.toggle_and_update('Diff', 'Differencing'),
