@@ -663,6 +663,17 @@ class Models():
             ('CUDAExecutionProvider'),
             ('CPUExecutionProvider')]
         self.provider_name = 'CUDAExecutionProvider'
+        self.trt_ep_options = {
+            'trt_max_workspace_size': 3 << 30,  # Dimensione massima dello spazio di lavoro in bytes
+            'trt_engine_cache_enable': True,
+            'trt_engine_cache_path': "tensorrt-engines",
+            'trt_timing_cache_enable': True,
+            'trt_timing_cache_path': "tensorrt-engines",
+            'trt_dump_ep_context_model': True,
+            'trt_ep_context_file_path': "tensorrt-engines",
+            'trt_layer_norm_fp32_fallback': True,
+            'trt_builder_optimization_level': 5,
+        }
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
@@ -747,16 +758,7 @@ class Models():
         match provider_name:
             case "TensorRT" | "TensorRT-Engine":
                 providers = [
-                                ('TensorrtExecutionProvider', {
-                                    'trt_engine_cache_enable': True,
-                                    'trt_engine_cache_path': "tensorrt-engines",
-                                    'trt_timing_cache_enable': True,
-                                    'trt_timing_cache_path': "tensorrt-engines",
-                                    'trt_dump_ep_context_model': True,
-                                    'trt_ep_context_file_path': "tensorrt-engines",
-                                    'trt_layer_norm_fp32_fallback': True,
-                                    'trt_builder_optimization_level': 5,
-                                }),
+                                ('TensorrtExecutionProvider', self.trt_ep_options),
                                 ('CUDAExecutionProvider'),
                                 ('CPUExecutionProvider')
                             ]
