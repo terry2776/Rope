@@ -8,6 +8,7 @@ import torchvision
 torchvision.disable_beta_transforms_warning()
 from torchvision.transforms import v2
 from numpy.linalg import norm as l2norm
+import kornia.geometry.transform as kgm
 
 # <--left profile
 src1 = np.array([[51.642, 50.115], [57.617, 49.990], [35.740, 69.007],
@@ -1294,6 +1295,51 @@ def paste_back(img_crop, M_c2o, img_ori, mask_ori, interpolation=v2.Interpolatio
     output = output.to(torch.uint8)
 
     return output
+
+def paste_back_kgm(img_crop, M_c2o, img_ori, mask_ori):
+    """paste back the image
+    """
+    dsize = (img_ori.shape[1], img_ori.shape[2])
+
+    # pad image by image size
+    img_crop = pad_image_by_size(img_crop, (img_ori.shape[1], img_ori.shape[2]))
+
+    img_crop = img_crop.float()
+    img_back = transform_img_kgm(img_crop, M_c2o, dsize=dsize)
+    img_back = torch.clip(mask_ori * img_back + (1 - mask_ori) * img_ori, 0, 255)
+
+    return img_back.to(torch.uint8)
+
+def transform_img_kgm(img, M, dsize, mode='bilinear', padding_mode='zeros', align_corners=True, fill_value=(0, 0, 0)):
+    """ Conduct similarity or affine transformation to the image using PyTorch CUDA.
+
+    Args:
+    img (torch.Tensor): Input image tensor (C x H x W)
+    M (torch.Tensor): 2x3 or 3x3 transformation matrix
+    dsize (tuple[int, int]): size of the output image (height, width).
+    mode(str, optional): interpolation mode to calculate output values 'bilinear' | 'nearest'. Default: "bilinear"
+    align_corners (bool, optional): mode for grid_generation. Default: True
+    fill_value (Tensor, optional): tensor of shape that fills the padding area. Only supported for RGB. Default: zeros(3)
+
+    Returns:
+    torch.Tensor: Transformed image
+    """
+    if isinstance(dsize, tuple) or isinstance(dsize, list):
+        _dsize = tuple(dsize)
+    else:
+        _dsize = (dsize, dsize)
+
+    # Convert M to a torch tensor if it is a numpy.ndarray
+    if isinstance(M, np.ndarray):
+        M = torch.from_numpy(M).to(img.device, dtype=img.dtype)
+
+        # Prepare the transformation matrix
+    M = M[:2, :]  # Ensure it's a 2x3 matrix
+
+    img_transformed = kgm.warp_affine(src=img.unsqueeze(0), M=M[None], dsize=(_dsize[0], _dsize[1]), mode=mode, padding_mode=padding_mode, align_corners=align_corners, fill_value=fill_value)
+    img_transformed = img_transformed.squeeze(0)
+
+    return img_transformed
 
 #imported from https://github.com/KwaiVGI/LivePortrait/blob/main/src/utils/live_portrait_wrapper.py
 def calculate_distance_ratio(lmk: np.ndarray, idx1: int, idx2: int, idx3: int, idx4: int, eps: float = 1e-6) -> np.ndarray:
