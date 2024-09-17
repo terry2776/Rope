@@ -1815,131 +1815,129 @@ def interp1d_inverse(y, fp, xp, device='cpu'):
     return x
 
 def histogram_matching_DFL_test(source_image, target_image, diffslider):
-    device = source_image.device
-    epsilon = 1e-6  # Small value to prevent division by zero
+    # Converti i tensori Torch in array di tipo float32 e assicurati che siano sul GPU
+    source_image_np = source_image.type(torch.float32).permute(1, 2, 0)  # Forma (H, W, C)
+    target_image_np = target_image.type(torch.float32).permute(1, 2, 0)  # Forma (H, W, C)
 
-    # Convert images to float tensors in range [0, 1], shape (C, H, W)
-    source_image_t = source_image.float().to(device) / 255.0  # (C, H, W)
-    target_image_t = target_image.float().to(device) / 255.0
+    # Normalizza le immagini [0, 1]
+    source_image_np /= 255.0
+    target_image_np /= 255.0
 
-    # Convert images from RGB to LAB (assuming functions accept (C, H, W))
-    source_lab = rgb_to_lab(source_image_t, False)
-    target_lab = rgb_to_lab(target_image_t, False)
+    # Converti da RGB a LAB
+    source_image_np = source_image_np.permute(2, 0, 1)  # Forma (C, H, W)
+    source = rgb_to_lab(source_image_np, False)  # Converti in LAB
+    source = source.permute(1, 2, 0)  # Forma (H, W, C)
 
-    # Split LAB channels
-    source_L = source_lab[0, :, :]  # Shape: (H, W)
-    source_A = source_lab[1, :, :]
-    source_B = source_lab[2, :, :]
+    target_image_np = target_image_np.permute(2, 0, 1)  # Forma (C, H, W)
+    target = rgb_to_lab(target_image_np, False)  # Converti in LAB
+    target = target.permute(1, 2, 0)  # Forma (H, W, C)
 
-    target_L = target_lab[0, :, :]
-    target_A = target_lab[1, :, :]
-    target_B = target_lab[2, :, :]
+    # Calcola media e deviazione standard per canali L, a, b
+    target_l_mean, target_l_std = target[..., 0].mean(), target[..., 0].std()
+    target_a_mean, target_a_std = target[..., 1].mean(), target[..., 1].std()
+    target_b_mean, target_b_std = target[..., 2].mean(), target[..., 2].std()
 
-    # Compute means and standard deviations for each channel
-    source_L_mean, source_L_std = source_L.mean(), source_L.std()
-    source_A_mean, source_A_std = source_A.mean(), source_A.std()
-    source_B_mean, source_B_std = source_B.mean(), source_B.std()
+    source_l_mean, source_l_std = source[..., 0].mean(), source[..., 0].std()
+    source_a_mean, source_a_std = source[..., 1].mean(), source[..., 1].std()
+    source_b_mean, source_b_std = source[..., 2].mean(), source[..., 2].std()
 
-    target_L_mean, target_L_std = target_L.mean(), target_L.std()
-    target_A_mean, target_A_std = target_A.mean(), target_A.std()
-    target_B_mean, target_B_std = target_B.mean(), target_B.std()
+    # Scala con le deviazioni standard reciproche del fattore proposto dal paper
+    target_l = (target[..., 0] - target_l_mean) * (source_l_std / target_l_std) + source_l_mean
+    target_a = (target[..., 1] - target_a_mean) * (source_a_std / target_a_std) + source_a_mean
+    target_b = (target[..., 2] - target_b_mean) * (source_b_std / target_b_std) + source_b_mean
 
-    # Perform color transfer
-    target_L = (target_L - target_L_mean) * (source_L_std / (target_L_std + epsilon)) + source_L_mean
-    target_A = (target_A - target_A_mean) * (source_A_std / (target_A_std + epsilon)) + source_A_mean
-    target_B = (target_B - target_B_mean) * (source_B_std / (target_B_std + epsilon)) + source_B_mean
+    # Clamping dei valori
+    target_l = torch.clamp(target_l, 0, 100)
+    target_a = torch.clamp(target_a, -127, 127)
+    target_b = torch.clamp(target_b, -127, 127)
 
-    # Clip the channels to valid ranges
-    target_L = torch.clamp(target_L, 0, 100)
-    target_A = torch.clamp(target_A, -127, 127)
-    target_B = torch.clamp(target_B, -127, 127)
+    matched_target_image_np = torch.stack([target_l, target_a, target_b], -1)  # Forma (H, W, 3)
 
-    # Stack the channels back together (C, H, W)
-    matched_lab = torch.stack([target_L, target_A, target_B], dim=0)
+    # Assicurati che l'output di lab_to_rgb sia della forma (H, W, 3)
+    matched_target_image_np = matched_target_image_np.permute(2, 0, 1)  # Forma (3, H, W)
+    matched_target_image_np = lab_to_rgb(matched_target_image_np, False)  # Converti in RGB
+    matched_target_image_np = matched_target_image_np.permute(1, 2, 0)  # Forma (H, W, 3)
 
-    # Convert back to RGB
-    matched_rgb = lab_to_rgb(matched_lab, False)
+    # Converti target_image_np nella forma corretta (H, W, C)
+    target_image_np = target_image_np.permute(1, 2, 0)  # Da (C, H, W) a (H, W, C)
 
-    # Clamp to [0, 1] to ensure valid pixel values
-    matched_rgb = torch.clamp(matched_rgb, 0.0, 1.0)
+    # Calcolo dell'immagine finale
+    final_image_np = (1 - diffslider / 100) * target_image_np + (diffslider / 100) * matched_target_image_np
+    final_image_np = torch.clamp(final_image_np * 255, 0, 255)  # Converti in intervallo [0, 255]
 
-    # Blend the images according to diffslider
-    alpha = diffslider / 100.0
-    final_image_t = (1 - alpha) * target_image_t + alpha * matched_rgb
-
-    # Scale back to [0, 255] and clip
-    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
-
-    # Ensure it's on the original device and has type float
-    final_image_tensor = final_image_t.to(device).float()
+    # Converti l'immagine finale in tensore
+    final_image_tensor = final_image_np.permute(2, 0, 1).float()  # Forma (C, H, W)
 
     return final_image_tensor
 
 def histogram_matching_DFL_Orig(source_image, target_image, mask, diffslider):
-    device = source_image.device
-    epsilon = 1e-6
+    # Converti i tensori Torch in array di tipo float32 e assicurati che siano sul GPU
+    source_image_np = source_image.type(torch.float32).permute(1, 2, 0)  # Forma (H, W, C)
+    target_image_np = target_image.type(torch.float32).permute(1, 2, 0)  # Forma (H, W, C)
+    mask_np = mask.type(torch.float32).permute(1, 2, 0)  # Forma (H, W, C)
     mask_cutoff = 0.2
 
-    # Convert images to float tensors in range [0, 1]
-    source_image_t = source_image.float().to(device) / 255.0
-    target_image_t = target_image.float().to(device) / 255.0
-    mask_t = mask.float().to(device)
+    source_mask = mask_np
+    target_mask = mask_np
 
-    # Prepare mask
-    if mask_t.dim() == 3 and mask_t.shape[0] == 1:
-        mask_t = mask_t.squeeze(0)
-    elif mask_t.dim() != 2:
-        raise ValueError("Mask must have shape (1, H, W) or (H, W)")
-    valid_mask = (mask_t >= mask_cutoff)
+    # Normalizza le immagini [0, 1]
+    source_image_np /= 255.0
+    target_image_np /= 255.0
 
-    # Convert images to LAB
-    source_lab = rgb_to_lab(source_image_t, False)
-    target_lab = rgb_to_lab(target_image_t, False)
+    # Converti da RGB a LAB
+    source_image_np = source_image_np.permute(2, 0, 1)  # Forma (C, H, W)
+    source = rgb_to_lab(source_image_np, False)  # Converti in LAB
+    source = source.permute(1, 2, 0)  # Forma (H, W, C)
 
-    # Extract LAB channels
-    source_L, source_A, source_B = source_lab[0], source_lab[1], source_lab[2]
-    target_L, target_A, target_B = target_lab[0], target_lab[1], target_lab[2]
+    target_image_np = target_image_np.permute(2, 0, 1)  # Forma (C, H, W)
+    target = rgb_to_lab(target_image_np, False)  # Converti in LAB
+    target = target.permute(1, 2, 0)  # Forma (H, W, C)
 
-    # Compute statistics over the entire image
-    source_L_mean, source_L_std = source_L.mean(), source_L.std()
-    source_A_mean, source_A_std = source_A.mean(), source_A.std()
-    source_B_mean, source_B_std = source_B.mean(), source_B.std()
+    source_input = source.clone()
+    if source_mask is not None:
+        source_input[source_mask[..., 0] < mask_cutoff] = torch.tensor([0.0, 0.0, 0.0], device=source_input.device, dtype=source_input.dtype)
 
-    target_L_mean, target_L_std = target_L.mean(), target_L.std()
-    target_A_mean, target_A_std = target_A.mean(), target_A.std()
-    target_B_mean, target_B_std = target_B.mean(), target_B.std()
+    target_input = target.clone()
+    if target_mask is not None:
+        target_input[target_mask[..., 0] < mask_cutoff] = torch.tensor([0.0, 0.0, 0.0], device=target_input.device, dtype=target_input.dtype)
 
-    # Prepare adjusted channels
-    target_L_adjusted = target_L.clone()
-    target_A_adjusted = target_A.clone()
-    target_B_adjusted = target_B.clone()
+    # Calcola media e deviazione standard per canali L, a, b
+    target_l_mean, target_l_std = target_input[..., 0].mean(), target_input[..., 0].std()
+    target_a_mean, target_a_std = target_input[..., 1].mean(), target_input[..., 1].std()
+    target_b_mean, target_b_std = target_input[..., 2].mean(), target_input[..., 2].std()
 
-    # Apply adjustments only within the masked areas
-    target_L_adjusted[valid_mask] = (target_L[valid_mask] - target_L_mean) * \
-        (source_L_std / (target_L_std + epsilon)) + source_L_mean
-    target_A_adjusted[valid_mask] = (target_A[valid_mask] - target_A_mean) * \
-        (source_A_std / (target_A_std + epsilon)) + source_A_mean
-    target_B_adjusted[valid_mask] = (target_B[valid_mask] - target_B_mean) * \
-        (source_B_std / (target_B_std + epsilon)) + source_B_mean
+    source_l_mean, source_l_std = source_input[..., 0].mean(), source_input[..., 0].std()
+    source_a_mean, source_a_std = source_input[..., 1].mean(), source_input[..., 1].std()
+    source_b_mean, source_b_std = source_input[..., 2].mean(), source_input[..., 2].std()
 
-    # Clip adjusted channels
-    target_L_adjusted = torch.clamp(target_L_adjusted, 0, 100)
-    target_A_adjusted = torch.clamp(target_A_adjusted, -127, 127)
-    target_B_adjusted = torch.clamp(target_B_adjusted, -127, 127)
+    # Scala con le deviazioni standard reciproche del fattore proposto dal paper
+    target_l = (target[..., 0] - target_l_mean) * (source_l_std / target_l_std) + source_l_mean
+    target_a = (target[..., 1] - target_a_mean) * (source_a_std / target_a_std) + source_a_mean
+    target_b = (target[..., 2] - target_b_mean) * (source_b_std / target_b_std) + source_b_mean
 
-    # Stack adjusted channels
-    matched_lab = torch.stack([target_L_adjusted, target_A_adjusted, target_B_adjusted], dim=0)
+    # Clamping dei valori
+    target_l = torch.clamp(target_l, 0, 100)
+    target_a = torch.clamp(target_a, -127, 127)
+    target_b = torch.clamp(target_b, -127, 127)
 
-    # Convert back to RGB
-    matched_rgb = lab_to_rgb(matched_lab, False)
-    matched_rgb = torch.clamp(matched_rgb, 0.0, 1.0)
+    matched_target_image_np = torch.stack([target_l, target_a, target_b], -1)  # Forma (H, W, 3)
 
-    # Blend images
-    alpha = diffslider / 100.0
-    final_image_t = (1 - alpha) * target_image_t + alpha * matched_rgb
+    # Assicurati che l'output di lab_to_rgb sia della forma (H, W, 3)
+    matched_target_image_np = matched_target_image_np.permute(2, 0, 1)  # Forma (3, H, W)
+    matched_target_image_np = lab_to_rgb(matched_target_image_np, False)  # Converti in RGB
+    matched_target_image_np = matched_target_image_np.permute(1, 2, 0)  # Forma (H, W, 3)
 
-    # Scale back to [0, 255]
-    final_image_t = torch.clamp(final_image_t * 255.0, 0.0, 255.0)
-    final_image_tensor = final_image_t.to(device).float()
+    # Converti target_image_np nella forma corretta (H, W, C)
+    target_image_np = target_image_np.permute(1, 2, 0)  # Da (C, H, W) a (H, W, C)
+
+    # Verifica le dimensioni dei tensori prima della combinazione
+    assert target_image_np.shape == matched_target_image_np.shape, f"Dimensioni non corrispondenti: {target_image_np.shape} vs {matched_target_image_np.shape}"
+
+    # Calcolo dell'immagine finale
+    final_image_np = (1 - diffslider / 100) * target_image_np + (diffslider / 100) * matched_target_image_np
+    final_image_np = torch.clamp(final_image_np * 255, 0, 255)  # Converti in intervallo [0, 255]
+
+    # Converti l'immagine finale in tensore
+    final_image_tensor = final_image_np.permute(2, 0, 1).float()  # Forma (C, H, W)
 
     return final_image_tensor

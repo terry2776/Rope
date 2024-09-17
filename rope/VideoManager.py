@@ -25,10 +25,9 @@ import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_imag
 import pyvirtualcam
 import platform
 import psutil
-from dfl.DFMModel import DFMModel
 
 device = 'cuda'
-from dfl.DFMModel import DFMModel
+from rope.Models import DFMModel
 from rope.Dicts import CAMERA_BACKENDS
 lock=threading.Lock()
 
@@ -1172,24 +1171,12 @@ class VideoManager():
         input_face_affined = torch.div(input_face_affined, 255.0)
 
         if dfl_model:
-            # Get face alignment image processor
-            fai_ip = dfl_model.get_fai_ip(original_face_512.permute(1, 2, 0).cpu().numpy())
-            test_swap = fai_ip.get_image('HWC')
-
-            # Convert and obtain outputs
-            out_celeb, out_celeb_mask, out_face_mask = dfl_model.convert(test_swap, parameters['DFLAmpMorphSlider']/100, rct=parameters['DFLRCTColorSwitch'])
-
-            swapper_output = torch.from_numpy(out_celeb.copy()).cuda()
-            # swapper_output = swapper_output.permute(1, 2, 0)
+            out_celeb, out_celeb_mask, out_face_mask = dfl_model.convert(original_face_512, parameters['DFLAmpMorphSlider']/100, rct=parameters['DFLRCTColorSwitch'])
 
             prev_face = input_face_affined.clone()
-            input_face_affined = swapper_output.clone()
+            input_face_affined = out_celeb.clone()
 
-            # show_image(prev_face)
-            # show_image(swapper_output)
-            output = swapper_output.clone()
-
-            # output = color_transfer(prev_face, output)
+            output = out_celeb.clone()
         else:
             if swapper_model == 'Inswapper128':
                 with torch.no_grad():  # Disabilita il calcolo del gradiente se è solo per inferenza
