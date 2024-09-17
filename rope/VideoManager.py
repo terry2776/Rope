@@ -1279,7 +1279,7 @@ class VideoManager():
 
         # Restorer
         if parameters["RestorerSwitch"]:
-            swap = self.func_w_test('Restorer', self.apply_restorer, swap, parameters)
+            swap = self.func_w_test('Restorer', self.apply_restorer, swap, parameters['RestorerDetTypeTextSel'], parameters['RestorerTypeTextSel'], parameters["RestorerSlider"], parameters['VQFRFidelitySlider'], parameters['DetectScoreSlider'])
 
         # Occluder
         if parameters["OccluderSwitch"]:
@@ -1334,7 +1334,7 @@ class VideoManager():
 
         # Restorer
         if parameters["Restorer2Switch"]:
-            swap = self.func_w_test('Restorer2', self.apply_restorer, swap, parameters)
+            swap = self.func_w_test('Restorer2', self.apply_restorer, swap, parameters['Restorer2DetTypeTextSel'], parameters['Restorer2TypeTextSel'], parameters["Restorer2Slider"], parameters['VQFRFidelitySlider'], parameters['DetectScoreSlider'])
 
         if parameters["AutoColorSwitch"]:
             # Histogram color matching original face on swapped face
@@ -1794,7 +1794,7 @@ class VideoManager():
 
         return out_parse
 
-    def apply_restorer(self, swapped_face_upscaled, parameters):
+    def apply_restorer(self, swapped_face_upscaled, restorer_det_type, restorer_type, restorer_blend, fidelity_value, detect_score):
         temp = swapped_face_upscaled
         t512 = v2.Resize((512, 512), antialias=False)
         t256 = v2.Resize((256, 256), antialias=False)
@@ -1802,15 +1802,15 @@ class VideoManager():
         t2048 = v2.Resize((2048, 2048), antialias=False)
 
         # If using a separate detection mode
-        if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
-            if parameters['RestorerDetTypeTextSel'] == 'Blend':
+        if restorer_det_type == 'Blend' or restorer_det_type == 'Reference':
+            if restorer_det_type == 'Blend':
                 # Set up Transformation
                 dst = self.arcface_dst * 4.0
                 dst[:,0] += 32.0
 
-            elif parameters['RestorerDetTypeTextSel'] == 'Reference':
+            elif restorer_det_type == 'Reference':
                 try:
-                    dst = self.models.resnet50(swapped_face_upscaled, score=parameters['DetectScoreSlider']/100.0)
+                    dst = self.models.resnet50(swapped_face_upscaled, score=detect_score/100.0)
                 except Exception as e:
                     print(f"exception: {e}")
                     return swapped_face_upscaled
@@ -1825,7 +1825,7 @@ class VideoManager():
         temp = torch.div(temp, 255)
         temp = v2.functional.normalize(temp, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=False)
 
-        if parameters['RestorerTypeTextSel'] == 'GPEN-256':
+        if restorer_type == 'GPEN-256':
             temp = t256(temp)
 
         temp = torch.unsqueeze(temp, 0).contiguous()
@@ -1833,34 +1833,34 @@ class VideoManager():
         # Bindings
         outpred = torch.empty((1,3,512,512), dtype=torch.float32, device=device).contiguous()
 
-        if parameters['RestorerTypeTextSel'] == 'GFPGAN-v1.4':
+        if restorer_type == 'GFPGAN-v1.4':
             self.models.run_GFPGAN(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'CodeFormer':
-            self.models.run_codeformer(temp, outpred, parameters['VQFRFidelitySlider'])
+        elif restorer_type == 'CodeFormer':
+            self.models.run_codeformer(temp, outpred, fidelity_value)
 
-        elif parameters['RestorerTypeTextSel'] == 'GPEN-256':
+        elif restorer_type == 'GPEN-256':
             outpred = torch.empty((1,3,256,256), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_256(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'GPEN-512':
+        elif restorer_type == 'GPEN-512':
             self.models.run_GPEN_512(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'GPEN-1024':
+        elif restorer_type == 'GPEN-1024':
             temp = t1024(temp)
             outpred = torch.empty((1, 3, 1024, 1024), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_1024(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'GPEN-2048':
+        elif restorer_type == 'GPEN-2048':
             temp = t2048(temp)
             outpred = torch.empty((1, 3, 2048, 2048), dtype=torch.float32, device=device).contiguous()
             self.models.run_GPEN_2048(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'RestoreFormer++':
+        elif restorer_type == 'RestoreFormer++':
             self.models.run_RestoreFormerPlusPlus(temp, outpred)
 
-        elif parameters['RestorerTypeTextSel'] == 'VQFR-v2':
-            self.models.run_VQFR_v2(temp, outpred, parameters['VQFRFidelitySlider'])
+        elif restorer_type == 'VQFR-v2':
+            self.models.run_VQFR_v2(temp, outpred, fidelity_value)
 
         # Format back to cxHxW @ 255
         outpred = torch.squeeze(outpred)
@@ -1869,15 +1869,15 @@ class VideoManager():
         outpred = torch.div(outpred, 2)
         outpred = torch.mul(outpred, 255)
 
-        if parameters['RestorerTypeTextSel'] == 'GPEN-256' or parameters['RestorerTypeTextSel'] == 'GPEN-1024' or parameters['RestorerTypeTextSel'] == 'GPEN-2048':
+        if restorer_type == 'GPEN-256' or restorer_type == 'GPEN-1024' or restorer_type == 'GPEN-2048':
             outpred = t512(outpred)
 
         # Invert Transform
-        if parameters['RestorerDetTypeTextSel'] == 'Blend' or parameters['RestorerDetTypeTextSel'] == 'Reference':
+        if restorer_det_type == 'Blend' or restorer_det_type == 'Reference':
             outpred = v2.functional.affine(outpred, tform.inverse.rotation*57.2958, (tform.inverse.translation[0], tform.inverse.translation[1]), tform.inverse.scale, 0, interpolation=v2.InterpolationMode.BILINEAR, center = (0,0) )
 
         # Blend
-        alpha = float(parameters["RestorerSlider"])/100.0
+        alpha = float(restorer_blend)/100.0
         outpred = torch.add(torch.mul(outpred, alpha), torch.mul(swapped_face_upscaled, 1-alpha))
 
         return outpred
