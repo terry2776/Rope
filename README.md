@@ -1,5 +1,13 @@
 ![image](https://github.com/Alucard24/Rope/releases/download/splash/splash_next.png)
 
+Next(Dev)-1.0.04
+
+Improvements:
+Improve performance for histogram_matching_DFL_Orig and histogram_matching_DFL_test functions. Now they work without permute operation.
+
+Bug Fixes:
+Fix for an issue on 2nd Restorer when active.
+
 Next(Dev)-1.0.03
 Contributors: @Hans, @mister.nobody.1234
 
