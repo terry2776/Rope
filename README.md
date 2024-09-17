@@ -1,5 +1,27 @@
 ![image](https://github.com/Alucard24/Rope/releases/download/splash/splash_next.png)
 
+Next(Dev)-1.0.03
+Contributors: @Hans, @mister.nobody.1234
+
+New Features:
+Imported and updated @Hans's changes to work on CUDA tensors without passing through the CPU, except for the JPEG compression feature.
+Added simplify_dfm_onnx.py script to simplify DFM models, enabling them to work with TensorRT/TensorRT-Engine providers, even for those with morph_value:0 as an input parameter.
+(I.E: "python tools\simplify_dfm_onnx.py ./dfl_models ./dfl_models/patched --extension .dfm --dynamic_input morph_value:0")
+
+Changes:
+Make tensor options configurable through the trt_ep_options variable.
+Add trt_max_workspace_size property to trt_ep_options variable.
+Update requirements. Add onnxsimplify.
+Update requirements: Add kornia package.
+Add two functions in order to use kornia.geometry.transform.warpaffine.
+
+Bug Fixes:
+Fix autoswap. Big Thanks to @mister.nobody.1234
+Fix issues for histogram_matching_DFL_Orig and histogram_matching_DFL_test functions.
+
+Improvements:
+Optimized DFL models to work directly on CUDA tensors without passing through the CPU. This significantly increases DFL model inference performance.
+
 Next(Dev)-1.0.02
 
 Changes:
