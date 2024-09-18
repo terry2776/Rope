@@ -436,82 +436,79 @@ class DFMModel:
         Transfer color using the RCT method.
 
         Args:
-            img (torch.Tensor): [N][HW][3C] torch.uint8/torch.float32
-            like (torch.Tensor): [N][HW][3C] torch.uint8/torch.float32
-            mask (torch.Tensor, optional): [N][HW][1C] torch.uint8/torch.float32
-            like_mask (torch.Tensor, optional): [N][HW][1C] torch.uint8/torch.float32
+            img (torch.Tensor): [N, H, W, 3] torch.uint8/torch.float32
+            like (torch.Tensor): [N, H, W, 3] torch.uint8/torch.float32
+            mask (torch.Tensor, optional): [N, H, W, 1] torch.uint8/torch.float32
+            like_mask (torch.Tensor, optional): [N, H, W, 1] torch.uint8/torch.float32
             mask_cutoff (float, optional): Cutoff value for masks. Defaults to 0.5.
 
         Returns:
-            torch.Tensor: The color-transferred image.
+            torch.Tensor: The color-transferred image. [N, C, H, W]
         """
         dtype = img.dtype
+        N = img.shape[0]  # Batch size
 
         # Convert images to float32 and normalize to [0, 1]
-        img = self.to_ufloat32(img)
-        img = img.permute(0, 3, 1, 2)  # Convert to (N, C, H, W)
-        img = torch.squeeze(img, dim=0)
-        img = faceutil.rgb_to_lab(img, False)
-        img = torch.unsqueeze(img, 0)
-        img = img.permute(0, 2, 3, 1)  # Convert back to (N, H, W, C)
+        img = self.to_ufloat32(img).permute(0, 3, 1, 2)  # Convert to (N, 3, H, W)
+        like_for_stat = self.to_ufloat32(like).permute(0, 3, 1, 2)  # Convert to (N, 3, H, W)
 
-        like_for_stat = self.to_ufloat32(like)
-        like_for_stat = like_for_stat.permute(0, 3, 1, 2)  # Convert to (N, C, H, W)
-        like_for_stat = torch.squeeze(like_for_stat, dim=0)
-        like_for_stat = faceutil.rgb_to_lab(like_for_stat, False)
-        like_for_stat = torch.unsqueeze(like_for_stat, 0)
-        like_for_stat = like_for_stat.permute(0, 2, 3, 1)  # Convert back to (N, H, W, C)
+        # Convert to LAB color space for each image in the batch
+        img_lab = torch.stack([faceutil.rgb_to_lab(img[i], False) for i in range(N)])  # Convert to LAB in (N, 3, H, W)
+        like_lab = torch.stack([faceutil.rgb_to_lab(like_for_stat[i], False) for i in range(N)])  # Convert to LAB in (N, 3, H, W)
 
         # Apply like mask
         if like_mask is not None:
-            like_mask = self.get_image(self.ch(self.to_ufloat32(like_mask), 1), 'NHW')
-            like_for_stat = like_for_stat.clone()
-            like_for_stat[like_mask < mask_cutoff] = 0  # Zero out regions below cutoff
+            like_mask = self.get_image(self.ch(self.to_ufloat32(like_mask), 1), 'NHW')  # Convert to (N, H, W)
+            like_mask = like_mask.unsqueeze(1).expand(-1, 3, -1, -1)  # Convert to (N, 3, H, W) to match (N, 3, H, W)
+            like_lab = like_lab.clone()
+            like_lab[like_mask < mask_cutoff] = 0  # Zero out regions below cutoff
 
         # Apply img mask
-        img_for_stat = img.clone()
+        img_for_stat = img_lab.clone()
         if mask is not None:
-            mask = self.get_image(self.ch(self.to_ufloat32(mask), 1), 'NHW')
+            mask = self.get_image(self.ch(self.to_ufloat32(mask), 1), 'NHW')  # Convert to (N, H, W)
+            mask = mask.unsqueeze(1).expand(-1, 3, -1, -1)  # Convert to (N, 3, H, W) to match (N, 3, H, W)
             img_for_stat = img_for_stat.clone()
             img_for_stat[mask < mask_cutoff] = 0  # Zero out regions below cutoff
 
-        # Compute statistics for LAB channels
-        source_l_mean, source_l_std = img_for_stat[..., 0].mean((1, 2), keepdim=True), img_for_stat[..., 0].std((1, 2), keepdim=True)
-        source_a_mean, source_a_std = img_for_stat[..., 1].mean((1, 2), keepdim=True), img_for_stat[..., 1].std((1, 2), keepdim=True)
-        source_b_mean, source_b_std = img_for_stat[..., 2].mean((1, 2), keepdim=True), img_for_stat[..., 2].std((1, 2), keepdim=True)
+        # Initialize the output tensor
+        img_out = torch.zeros_like(img_lab)
 
-        like_l_mean, like_l_std = like_for_stat[..., 0].mean((1, 2), keepdim=True), like_for_stat[..., 0].std((1, 2), keepdim=True)
-        like_a_mean, like_a_std = like_for_stat[..., 1].mean((1, 2), keepdim=True), like_for_stat[..., 1].std((1, 2), keepdim=True)
-        like_b_mean, like_b_std = like_for_stat[..., 2].mean((1, 2), keepdim=True), like_for_stat[..., 2].std((1, 2), keepdim=True)
+        # Process each image in the batch
+        for i in range(N):
+            # Compute statistics for LAB channels in (3, H, W)
+            source_l_mean, source_l_std = img_for_stat[i, 0].mean(), img_for_stat[i, 0].std()
+            source_a_mean, source_a_std = img_for_stat[i, 1].mean(), img_for_stat[i, 1].std()
+            source_b_mean, source_b_std = img_for_stat[i, 2].mean(), img_for_stat[i, 2].std()
 
-        # Perform color transfer adjustments
-        source_l = img[..., 0]
-        source_a = img[..., 1]
-        source_b = img[..., 2]
+            like_l_mean, like_l_std = like_lab[i, 0].mean(), like_lab[i, 0].std()
+            like_a_mean, like_a_std = like_lab[i, 1].mean(), like_lab[i, 1].std()
+            like_b_mean, like_b_std = like_lab[i, 2].mean(), like_lab[i, 2].std()
 
-        # Adjust L channel
-        source_l = (source_l - source_l_mean) * (like_l_std / (source_l_std + 1e-6)) + like_l_mean
-        # Adjust A channel
-        source_a = (source_a - source_a_mean) * (like_a_std / (source_a_std + 1e-6)) + like_a_mean
-        # Adjust B channel
-        source_b = (source_b - source_b_mean) * (like_b_std / (source_b_std + 1e-6)) + like_b_mean
+            # Perform color transfer adjustments in (3, H, W)
+            source_l = img_lab[i, 0]
+            source_a = img_lab[i, 1]
+            source_b = img_lab[i, 2]
 
-        # Clip the adjusted channels to valid LAB ranges
-        source_l = torch.clamp(source_l, 0, 100)
-        source_a = torch.clamp(source_a, -127, 127)
-        source_b = torch.clamp(source_b, -127, 127)
+            # Adjust L, A, B channels
+            source_l = (source_l - source_l_mean) * (like_l_std / (source_l_std + 1e-6)) + like_l_mean
+            source_a = (source_a - source_a_mean) * (like_a_std / (source_a_std + 1e-6)) + like_a_mean
+            source_b = (source_b - source_b_mean) * (like_b_std / (source_b_std + 1e-6)) + like_b_mean
 
-        # Stack channels back together
-        img = torch.stack([source_l, source_a, source_b], dim=-1)
-        img = img.permute(0, 3, 1, 2)  # Convert to (N, C, H, W)
-        img = torch.squeeze(img, dim=0)
-        img = faceutil.lab_to_rgb(img, False)
-        img = torch.unsqueeze(img, 0)
-        img = img.permute(0, 2, 3, 1)  # Convert back to (N, H, W, C)
+            # Clip the adjusted channels to valid LAB ranges
+            source_l = torch.clamp(source_l, 0, 100)
+            source_a = torch.clamp(source_a, -127, 127)
+            source_b = torch.clamp(source_b, -127, 127)
+
+            # Stack channels back together in (3, H, W)
+            img_out[i] = torch.stack([source_l, source_a, source_b], dim=0)
+
+        # Convert back to RGB for each image in the batch
+        img_out = torch.stack([faceutil.lab_to_rgb(img_out[i], False) for i in range(N)])  # Convert from LAB to RGB directly in (N, 3, H, W)
 
         # Convert back to the original data type
-        img = self.to_dtype(img, dtype)
-        return img
+        img_out = self.to_dtype(img_out, dtype).permute(0, 2, 3, 1)  # Convert back to (N, H, W, 3)
+        return img_out
 
     def convert_shape(self, shape):
         # Iterate over each dimension in the shape
