@@ -1453,14 +1453,15 @@ class Models():
         torch.cuda.synchronize()
         self.model_xseg.run_with_iobinding(io_binding)
 
+    # https://github.com/yakhyo/face-parsing
     def run_faceparser(self, image, output):
         if not self.faceparser_model:
-            self.faceparser_model = onnxruntime.InferenceSession("./models/faceparser_fp16.onnx", providers=self.providers)
+            self.faceparser_model = onnxruntime.InferenceSession("./models/faceparser_resnet34.onnx", providers=self.providers)
 
         image = image.contiguous()
         io_binding = self.faceparser_model.io_binding()
         io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='out', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
 
         torch.cuda.synchronize()
         self.faceparser_model.run_with_iobinding(io_binding)

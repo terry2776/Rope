@@ -1707,7 +1707,7 @@ class VideoManager():
         img = torch.div(img, 255)
         img = v2.functional.normalize(img, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         img = torch.reshape(img, (1, 3, 512, 512))
-        outpred = torch.empty((1,19,512,512), dtype=torch.float32, device='cuda').contiguous()
+        outpred = torch.empty((1,19,512,512), dtype=torch.float32, device=device).contiguous()
 
         self.models.run_faceparser(img, outpred)
 
@@ -1725,10 +1725,14 @@ class VideoManager():
             13: parameters['LowerLipParserSlider'], #Lower Lip
             14: parameters['NeckParserSlider'], #Neck
         }
+        
+        # Pre-calculated kernel for dilation (3x3 kernel to reduce iterations)
+        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=device)  # Kernel 3x3
+
         face_parses = []
         for attribute in face_attributes.keys():
             if face_attributes[attribute] > 0:
-                attribute_idxs = torch.tensor( [attribute], device='cuda')
+                attribute_idxs = torch.tensor( [attribute], device=device)
                 iters = int(face_attributes[attribute])
 
                 attribute_parse = torch.isin(outpred, attribute_idxs)
@@ -1736,8 +1740,6 @@ class VideoManager():
                 attribute_parse = torch.reshape(attribute_parse, (1,1,512,512))
                 attribute_parse = torch.neg(attribute_parse)
                 attribute_parse = torch.add(attribute_parse, 1)
-
-                kernel = torch.ones((1,1,3,3), dtype=torch.float32, device='cuda')
 
                 for i in range(iters):
                     attribute_parse = torch.nn.functional.conv2d(attribute_parse, kernel, padding=(1, 1))
@@ -1747,50 +1749,58 @@ class VideoManager():
                 attribute_parse = torch.neg(attribute_parse)
                 attribute_parse = torch.add(attribute_parse, 1)
                 attribute_parse = torch.reshape(attribute_parse, (1, 512, 512))
-                gauss = transforms.GaussianBlur(parameters['ParserBlurSlider']*2+1, (parameters['ParserBlurSlider']+1)*0.2)
-                attribute_parse = gauss(attribute_parse)
+
+                # Apply Gaussian blur if needed
+                blur_kernel_size = parameters['ParserBlurSlider'] * 2 + 1
+                if blur_kernel_size > 1:
+                    gauss = transforms.GaussianBlur(blur_kernel_size, (parameters['ParserBlurSlider'] + 1) * 0.2)
+                    attribute_parse = gauss(attribute_parse)
             else:
-                attribute_parse = torch.ones((1, 512, 512), dtype=torch.float32, device='cuda')
+                attribute_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=device)
             face_parses.append(attribute_parse)
 
         # BG Parse
         bg_idxs = torch.tensor([0, 14, 15, 16, 17, 18], device=device)
-        bg_parse = torch.isin(outpred, bg_idxs)
-        bg_parse = torch.clamp(~bg_parse, 0, 1).type(torch.float32)
-        bg_parse = torch.reshape(bg_parse, (1, 1, 512, 512))
+
+        # For bg_parse, invert the mask so that the black background expands
+        bg_parse = 1 - torch.isin(outpred, bg_idxs).float().unsqueeze(0).unsqueeze(0)  # (1, 1, 512, 512)
 
         if FaceAmount > 0:
-            kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=device)
-
             for i in range(int(FaceAmount)):
-                bg_parse = torch.nn.functional.conv2d(bg_parse, kernel, padding=(1, 1))
+                bg_parse = torch.nn.functional.conv2d(bg_parse, kernel, padding=(1, 1))  # Padding (1, 1) for 3x3 kernel
                 bg_parse = torch.clamp(bg_parse, 0, 1)
-            gauss = transforms.GaussianBlur(parameters['BGParserBlurSlider']*2+1, (parameters['BGParserBlurSlider']+1)*0.2)
-            bg_parse = gauss(bg_parse)
-            bg_parse = torch.squeeze(bg_parse)
+
+            blur_kernel_size = parameters['BGParserBlurSlider'] * 2 + 1
+            if blur_kernel_size > 1:
+                gauss = transforms.GaussianBlur(blur_kernel_size, (parameters['BGParserBlurSlider'] + 1) * 0.2)
+                bg_parse = gauss(bg_parse)
+
+            bg_parse = torch.clamp(bg_parse, 0, 1)
 
         elif FaceAmount < 0:
-            bg_parse = torch.neg(bg_parse)
-            bg_parse = torch.add(bg_parse, 1)
-
-            kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=device)
-
+            bg_parse = 1 - bg_parse  # Invert mask back
             for i in range(int(-FaceAmount)):
-                bg_parse = torch.nn.functional.conv2d(bg_parse, kernel, padding=(1, 1))
+                bg_parse = torch.nn.functional.conv2d(bg_parse, kernel, padding=(1, 1))  # Padding (1, 1) for 3x3 kernel
                 bg_parse = torch.clamp(bg_parse, 0, 1)
 
-            bg_parse = torch.squeeze(bg_parse)
-            bg_parse = torch.neg(bg_parse)
-            bg_parse = torch.add(bg_parse, 1)
-            bg_parse = torch.reshape(bg_parse, (1, 512, 512))
-            gauss = transforms.GaussianBlur(parameters['BGParserBlurSlider']*2+1, (parameters['BGParserBlurSlider']+1)*0.2)
-            bg_parse = gauss(bg_parse)
-        else:
-            bg_parse = torch.ones((1,512,512), dtype=torch.float32, device='cuda')
+            bg_parse = 1 - bg_parse  # Re-invert back
+            blur_kernel_size = parameters['BGParserBlurSlider'] * 2 + 1
+            if blur_kernel_size > 1:
+                gauss = transforms.GaussianBlur(blur_kernel_size, (parameters['BGParserBlurSlider'] + 1) * 0.2)
+                bg_parse = gauss(bg_parse)
 
-        out_parse = bg_parse
+            bg_parse = torch.clamp(bg_parse, 0, 1)
+
+        else:
+            # If FaceAmount is 0, use a fully white mask
+            bg_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=device)
+
+        out_parse = bg_parse.squeeze(0)
         for face_parse in face_parses:
             out_parse = torch.mul(out_parse, face_parse)
+
+        # Final clamping to ensure the output parse is valid
+        out_parse = torch.clamp(out_parse, 0, 1)
 
         return out_parse
 
