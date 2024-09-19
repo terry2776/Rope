@@ -1551,7 +1551,6 @@ class Models():
                 kps_preds = net_outs[idx+fmc*2] * stride
                 height = input_height // stride
                 width = input_width // stride
-                K = height * width
                 key = (height, width, stride)
                 if key in center_cache:
                     anchor_centers = center_cache[key]
@@ -1809,7 +1808,6 @@ class Models():
                 kps_preds = net_outs[idx+fmc*2] * stride
                 height = input_height // stride
                 width = input_width // stride
-                K = height * width
                 key = (height, width, stride)
                 if key in center_cache:
                     anchor_centers = center_cache[key]
