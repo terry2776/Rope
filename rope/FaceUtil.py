@@ -45,6 +45,17 @@ arcface_src = np.array(
 
 arcface_src = np.expand_dims(arcface_src, axis=0)
 
+# Definisci i punti di riferimento come tensore PyTorch
+arcface_src_cuda = torch.tensor(
+    [[38.2946, 51.6963],
+     [73.5318, 51.5014],
+     [56.0252, 71.7366],
+     [41.5493, 92.3655],
+     [70.7299, 92.2041]],
+    dtype=torch.float32,
+    device='cuda'
+) # Shape: (5, 2)
+
 def pad_image_by_size(img, image_size):
     # Se image_size non è una tupla, crea una tupla con altezza e larghezza uguali
     if not isinstance(image_size, tuple):
@@ -99,19 +110,6 @@ def trans_points2d(pts, M):
     # Return only the first two columns (x and y coordinates)
     return transformed_pts[:, :2]
 
-'''
-def trans_points2d(pts, M):
-    new_pts = np.zeros(shape=pts.shape, dtype=np.float32)
-    for i in range(pts.shape[0]):
-        pt = pts[i]
-        new_pt = np.array([pt[0], pt[1], 1.], dtype=np.float32)
-        new_pt = np.dot(M, new_pt)
-        #print('new_pt', new_pt.shape, new_pt)
-        new_pts[i] = new_pt[0:2]
-
-    return new_pts
-'''
-
 def trans_points3d(pts, M):
     scale = np.sqrt(M[0, 0]**2 + M[0, 1]**2)
 
@@ -129,21 +127,6 @@ def trans_points3d(pts, M):
     transformed_pts = np.hstack([transformed_2d[:, :2], scaled_z.reshape(-1, 1)])
 
     return transformed_pts
-
-'''
-def trans_points3d(pts, M):
-    scale = np.sqrt(M[0][0] * M[0][0] + M[0][1] * M[0][1])
-    new_pts = np.zeros(shape=pts.shape, dtype=np.float32)
-    for i in range(pts.shape[0]):
-        pt = pts[i]
-        new_pt = np.array([pt[0], pt[1], 1.], dtype=np.float32)
-        new_pt = np.dot(M, new_pt)
-        #print('new_pt', new_pt.shape, new_pt)
-        new_pts[i][0:2] = new_pt[0:2]
-        new_pts[i][2] = pts[i][2] * scale
-
-    return new_pts
-'''
 
 def trans_points(pts, M):
     if pts.shape[1] == 2:
@@ -1956,3 +1939,102 @@ def histogram_matching_DFL_Orig(source_image, target_image, mask, diffslider):
     final_image = torch.clamp(final_image * 255, 0, 255)  # Converti in intervallo [0, 255]
 
     return final_image
+
+def transform_t(img, center, output_size, scale, rotation):
+    device = img.device
+    dtype = img.dtype
+    img = pad_image_by_size(img, output_size)
+
+    scale_ratio = scale
+    rot_rad = torch.tensor(rotation * torch.pi / 180.0, device=device, dtype=dtype)
+    cos_theta = torch.cos(rot_rad) * scale_ratio
+    sin_theta = torch.sin(rot_rad) * scale_ratio
+
+    a = cos_theta
+    b = sin_theta
+    c = -sin_theta
+    d = cos_theta
+
+    cx, cy = center
+    cx = cx * scale_ratio
+    cy = cy * scale_ratio
+    tx = -cx
+    ty = -cy
+    tx_final = output_size / 2
+    ty_final = output_size / 2
+    tx_total = tx_final + a * tx + b * ty
+    ty_total = ty_final + c * tx + d * ty
+
+    M = torch.tensor([[a, b, tx_total],
+                      [c, d, ty_total]], dtype=dtype, device=device)
+    img_batch = img.unsqueeze(0)
+    grid = torch.nn.functional.affine_grid(M.unsqueeze(0), img_batch.size(), align_corners=False)
+    cropped_batch = torch.nn.functional.grid_sample(img_batch, grid, align_corners=False, mode='bilinear')
+    cropped = cropped_batch.squeeze(0)
+
+    return cropped, M
+
+def trans_points2d_t(pts, M):
+    if pts.dim() != 2 or pts.size(1) != 2:
+        raise ValueError("pts deve essere un tensore 2D con dimensione (N, 2)")
+    ones_column = torch.ones((pts.size(0), 1), dtype=pts.dtype, device=pts.device)
+    homogeneous_pts = torch.cat([pts, ones_column], dim=1)
+    transformed_pts = homogeneous_pts @ M.T
+
+    return transformed_pts[:, :2]
+
+def invertAffineTransform_t(M):
+    if M.dim() == 2 and M.size() == (2, 3):
+        M_H = torch.cat([M, torch.tensor([[0, 0, 1]], device=M.device, dtype=M.dtype)], dim=0)
+        IM_H = torch.inverse(M_H)
+        IM = IM_H[:2, :]
+    else:
+        raise ValueError("M deve essere di dimensione (2, 3)")
+
+    return IM
+
+def get_face_orientation_t(face_size, lmk):
+    assert lmk.shape == (5, 2), "lmk deve essere un tensore di forma (5, 2)"
+    device = lmk.device
+
+    # Aggiungiamo un controllo per portare arcface_src_cuda su CUDA se necessario
+    if device != arcface_src_cuda.device:
+        arcface_src_cuda = arcface_src_cuda.to(device)
+
+    # Non è necessario ripetere per batch perché `lmk` ha già forma (5, 2)
+    src_scaled = (face_size / 112.0) * arcface_src_cuda  # Shape: (5, 2)
+
+    # Calcolo del centro dei landmark
+    centroid_lmk = lmk.mean(dim=0, keepdim=True)  # Shape: (1, 2)
+    centroid_src = src_scaled.mean(dim=0, keepdim=True)  # Shape: (1, 2)
+
+    # Landmark centrati
+    lmk_centered = lmk - centroid_lmk  # Shape: (5, 2)
+    src_centered = src_scaled - centroid_src  # Shape: (5, 2)
+
+    # Norme
+    norm_lmk = torch.norm(lmk_centered, dim=1).pow(2).sum().unsqueeze(0)  # Shape: (1,)
+    norm_src = torch.norm(src_centered, dim=1).pow(2).sum().unsqueeze(0)  # Shape: (1,)
+    scale = torch.sqrt(norm_src / norm_lmk)  # Shape: (1,)
+
+    # Scaling dei landmark
+    lmk_scaled = lmk_centered * scale  # Shape: (5, 2)
+
+    # Calcolo della matrice di covarianza
+    covariance = torch.mm(src_centered.t(), lmk_scaled)  # Shape: (2, 2)
+    U, S, V = torch.svd(covariance)
+
+    # Calcolo della matrice di rotazione
+    R = torch.mm(U, V.t())  # Shape: (2, 2)
+
+    # Controllo del determinante per garantire una rotazione valida
+    det = torch.det(R)
+    if det < 0:
+        U[:, -1] *= -1
+        R = torch.mm(U, V.t())
+
+    # Calcolo dell'angolo in radianti e conversione in gradi
+    angle_rad = torch.atan2(R[1, 0], R[0, 0])  # Forma (1,)
+    angle_deg = torch.rad2deg(angle_rad)
+
+    return angle_deg
