@@ -27,7 +27,7 @@ import platform
 import psutil
 
 device = 'cuda'
-from rope.Models import DFMModel
+from rope.DFMModel import DFMModel
 from rope.Dicts import CAMERA_BACKENDS
 lock=threading.Lock()
 
