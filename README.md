@@ -1,5 +1,27 @@
 ![image](https://github.com/Alucard24/Rope/releases/download/splash/splash_next.png)
 
+Next(Dev)-1.0.05
+
+New Features:
+Add functions to work on torch tensor.
+Lay the groundwork for supporting new providers.
+Ready for Rope-Next-Portable!
+
+Improvements:
+Optimize DFL Model rct function.
+Optimize the apply_face_parser function for performance.
+Optimize CLIPSwitch inference to work entirely on CUDA tensors or CPU tensors.
+
+Changes:
+Change the faceparser model with the updated one. Big Thanks to @yakhyo
+Remove useless code.
+Move DFMModel, FaceEditor, FaceLandmarks and TensorRTPredictor classes into the proper files.
+Remove Rope-cu118.bat and Rope-cu124.bat files.
+Update requirements. Add requests package.
+
+Bug Fixes:
+Fix an issue when providers setting is set to CPU
+
 Next(Dev)-1.0.04
 
 Improvements:
