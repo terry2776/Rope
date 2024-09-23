@@ -10,7 +10,7 @@ try:
     import tensorrt as trt
     import ctypes
 except ModuleNotFoundError:
-    print("No TensorRT Found")
+    pass
 
 # Dizionario per la conversione dei tipi di dati numpy a torch
 numpy_to_torch_dtype_dict = {
@@ -30,8 +30,11 @@ if np.version.full_version >= "1.24.0":
 else:
     numpy_to_torch_dtype_dict[np.bool] = torch.bool
 
-# Usa lo stesso logger globale di TensorRT come nella classe EngineBuilder
-TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
+if 'trt' in globals():
+    # Creazione di un'istanza globale di logger di TensorRT
+    TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
+else:
+    TRT_LOGGER = {}
 
 # imported from https://github.com/warmshao/FasterLivePortrait/blob/master/src/models/predictor.py
 # adjusted to work with TensorRT 10.3.0
@@ -51,6 +54,7 @@ class TensorRTPredictor:
         self.engine = None
         self.context_pool = None
         self.lock = Lock()
+        self.device = kwargs.get("device", 'cuda')
 
         custom_plugin_path = kwargs.get("custom_plugin_path", None)
         if custom_plugin_path is not None:
@@ -104,7 +108,7 @@ class TensorRTPredictor:
         for _ in range(self.pool_size):
             self.context_pool.put(self.engine.create_execution_context())
 
-    def allocate_max_buffers(self, device="cuda"):
+    def allocate_max_buffers(self):
         nvtx.range_push("allocate_max_buffers")
         # Supporto per batch dinamico
         batch_size = 1
@@ -121,7 +125,7 @@ class TensorRTPredictor:
             dtype = trt.nptype(self.engine.get_tensor_dtype(binding))
             tensor = torch.empty(
                 tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]
-            ).to(device=device)
+            ).to(device=self.device)
             self.tensors[binding] = tensor
         nvtx.range_pop()
 

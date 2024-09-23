@@ -7,10 +7,13 @@ onnxruntime.set_default_logger_severity(4)
 onnxruntime.log_verbosity_level = -1
 
 class DFMModel:
-    def __init__(self, model_path: str, providers, device=None):
+    def __init__(self, model_path: str, providers, device='cuda'):
 
         self._model_path = model_path
         self.providers = providers
+        self.device = device
+        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device=device)
+        
         sess = self._sess = onnxruntime.InferenceSession(str(model_path), providers=self.providers)
         inputs = sess.get_inputs()
 
@@ -84,12 +87,12 @@ class DFMModel:
         io_binding = self._sess.io_binding()
 
         # Bind input image tensor
-        io_binding.bind_input(name='in_face:0', device_type='cuda', device_id=0, element_type=np.float32, shape=img.shape, buffer_ptr=img.data_ptr())
+        io_binding.bind_input(name='in_face:0', device_type=self.device, device_id=0, element_type=np.float32, shape=img.shape, buffer_ptr=img.data_ptr())
 
         # Bind morph factor if the model supports it
         if self._model_type == 2:
-            morph_factor_t = torch.tensor([morph_factor], dtype=torch.float32, device='cuda')
-            io_binding.bind_input(name='morph_value:0', device_type='cuda', device_id=0, element_type=np.float32, shape=morph_factor_t.shape, buffer_ptr=morph_factor_t.data_ptr())
+            morph_factor_t = torch.tensor([morph_factor], dtype=torch.float32, device=self.device)
+            io_binding.bind_input(name='morph_value:0', device_type=self.device, device_id=0, element_type=np.float32, shape=morph_factor_t.shape, buffer_ptr=morph_factor_t.data_ptr())
 
         # Prepare output tensors and bind them
         outputs = self._sess.get_outputs()
@@ -101,7 +104,7 @@ class DFMModel:
 
             # Create a torch tensor with the shape and dtype of the output
             torch_dtype = self.onnx_to_torch_dtype[output.type]
-            tensor_output = torch.empty(shape, dtype=torch_dtype, device='cuda').contiguous()
+            tensor_output = torch.empty(shape, dtype=torch_dtype, device=self.device).contiguous()
 
             # Append the tensor to the list
             binding_outputs.append(tensor_output)
@@ -109,7 +112,7 @@ class DFMModel:
             # Bind the output using ONNX Runtime's io_binding
             io_binding.bind_output(
                 name=output.name,
-                device_type='cuda',
+                device_type=self.device,
                 device_id=0,
                 element_type=self.onnx_to_numpy_dtype[output.type],  # Use NumPy dtype for element_type
                 shape=shape,
@@ -117,7 +120,10 @@ class DFMModel:
             )
 
         # Run the model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self._sess.run_with_iobinding(io_binding)
 
         # Process outputs (resize, clip channels, and convert back to original dtype)

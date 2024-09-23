@@ -2109,13 +2109,13 @@ class GUI(tk.Tk):
                     img = cv2.imread(file)
 
                     if img is not None:
-                        img = torch.from_numpy(img.astype('uint8')).to('cuda')
+                        img = torch.from_numpy(img.astype('uint8')).to(self.models.device)
 
                         pad_scale = 0.2
                         padded_width = int(img.size()[1]*(1.+pad_scale))
                         padded_height = int(img.size()[0]*(1.+pad_scale))
 
-                        padding = torch.zeros((padded_height, padded_width, 3), dtype=torch.uint8, device='cuda:0')
+                        padding = torch.zeros((padded_height, padded_width, 3), dtype=torch.uint8, device=self.models.device)
 
                         width_start = int(img.size()[1]*pad_scale/2)
                         width_end = width_start+int(img.size()[1])
@@ -2164,7 +2164,7 @@ class GUI(tk.Tk):
 
     def find_faces(self):
         try:
-            img = torch.from_numpy(self.video_image).to('cuda')
+            img = torch.from_numpy(self.video_image).to(self.models.device)
             img = img.permute(2,0,1)
             if self.parameters["AutoRotationSwitch"]:
                 rotation_angles = [0, 90, 180, 270]
@@ -2361,9 +2361,6 @@ class GUI(tk.Tk):
 
         self.add_action("target_faces", self.target_faces)
         self.add_action('get_requested_video_frame', self.video_slider.get())
-
-        # latent = torch.from_numpy(self.models.calc_swapper_latent(self.source_faces[button]['Embedding'])).float().to('cuda')
-        # face['ptrdata'] = self.models.run_swap_stg1(latent)
 
     def populate_target_videos(self):
         videos = []

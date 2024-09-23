@@ -3,16 +3,23 @@ import sys
 import logging
 import platform
 import ctypes
-import tensorrt as trt
 import numpy as np
 from pathlib import Path
+
+try:
+    import tensorrt as trt
+except ModuleNotFoundError:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("EngineBuilder").setLevel(logging.INFO)
 log = logging.getLogger("EngineBuilder")
 
-# Creazione di un'istanza globale di logger di TensorRT
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+if 'trt' in globals():
+    # Creazione di un'istanza globale di logger di TensorRT
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+else:
+    TRT_LOGGER = {}
 
 # imported from https://github.com/warmshao/FasterLivePortrait/blob/master/scripts/onnx2trt.py
 # adjusted to work with TensorRT 10.3.0

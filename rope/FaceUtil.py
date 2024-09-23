@@ -53,8 +53,10 @@ arcface_src_cuda = torch.tensor(
      [41.5493, 92.3655],
      [70.7299, 92.2041]],
     dtype=torch.float32,
-    device='cuda'
+
 ) # Shape: (5, 2)
+if torch.cuda.is_available():
+    arcface_src_cuda = arcface_src_cuda.to('cuda')
 
 def pad_image_by_size(img, image_size):
     # Se image_size non è una tupla, crea una tupla con altezza e larghezza uguali
@@ -300,7 +302,7 @@ def align_crop(img, lmk, image_size, mode='arcfacemap', interpolation=v2.Interpo
         borderMode=cv2.BORDER_REPLICATE,
     )
     '''
-    warped = warp_affine_torchvision(img, matrix, (image_size, image_size), rotation_ratio=57.2958, border_value=0.0, border_mode='replicate', interpolation_value=v2.functional.InterpolationMode.NEAREST, device='cuda')
+    warped = warp_affine_torchvision(img, matrix, (image_size, image_size), rotation_ratio=57.2958, border_value=0.0, border_mode='replicate', interpolation_value=v2.functional.InterpolationMode.NEAREST, device=img.device)
 
     return warped, matrix
 
@@ -460,7 +462,7 @@ def warp_face_by_bounding_box_for_landmark_68(img, bbox, input_size):
     if torch.mean(crop_image.to(dtype=torch.float32)[0, :, :]) < 30:
         crop_image = cv2.cvtColor(crop_image.permute(1, 2, 0).to('cpu').numpy(), cv2.COLOR_RGB2Lab)
         crop_image[:, :, 0] = cv2.createCLAHE(clipLimit = 2).apply(crop_image[:, :, 0])
-        crop_image = torch.from_numpy(cv2.cvtColor(crop_image, cv2.COLOR_Lab2RGB)).to('cuda').permute(2, 0, 1)
+        crop_image = torch.from_numpy(cv2.cvtColor(crop_image, cv2.COLOR_Lab2RGB)).to(img.device).permute(2, 0, 1)
 
     return crop_image, affine_matrix
 
