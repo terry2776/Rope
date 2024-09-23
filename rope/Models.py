@@ -4,296 +4,52 @@ from skimage import transform as trans
 import torch
 import torchvision
 torchvision.disable_beta_transforms_warning()
+from torchvision import transforms
 from torchvision.transforms import v2
 from numpy.linalg import norm as l2norm
 import onnxruntime
 import onnx
 from itertools import product as product
 import subprocess as sp
-onnxruntime.set_default_logger_severity(4)
-onnxruntime.log_verbosity_level = -1
 import rope.FaceUtil as faceutil
 import pickle
 import math
 from torch.cuda import nvtx
-from collections import OrderedDict
 import platform
 from rope.EngineBuilder import onnx_to_trt as onnx2trt
+from rope.TensorRTPredictor import TensorRTPredictor
+from rope.external.clipseg import CLIPDensePredT
 import os
 from packaging import version
-from dfl.DFMModel import DFMModel
-from dfl.xlib.onnxruntime.device import ORTDeviceInfo
-from queue import Queue
-from threading import Lock
 
 try:
     import tensorrt as trt
-    import ctypes
 except ModuleNotFoundError:
-    print("No TensorRT Found")
+    pass
 
-# Dizionario per la conversione dei tipi di dati numpy a torch
-numpy_to_torch_dtype_dict = {
-    np.uint8: torch.uint8,
-    np.int8: torch.int8,
-    np.int16: torch.int16,
-    np.int32: torch.int32,
-    np.int64: torch.int64,
-    np.float16: torch.float16,
-    np.float32: torch.float32,
-    np.float64: torch.float64,
-    np.complex64: torch.complex64,
-    np.complex128: torch.complex128,
-}
-if np.version.full_version >= "1.24.0":
-    numpy_to_torch_dtype_dict[np.bool_] = torch.bool
-else:
-    numpy_to_torch_dtype_dict[np.bool] = torch.bool
-
-# Usa lo stesso logger globale di TensorRT come nella classe EngineBuilder
-TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
-
-# imported from https://github.com/warmshao/FasterLivePortrait/blob/master/src/models/predictor.py
-# adjusted to work with TensorRT 10.3.0
-class TensorRTPredictor:
-    """
-    Implements inference for the TensorRT engine with a pool of execution contexts.
-    """
-
-    def __init__(self, **kwargs):
-        """
-        :param engine_path: The path to the serialized engine to load from disk.
-        :param pool_size: The size of the pool of execution contexts.
-        """
-        global TRT_LOGGER
-
-        # Inizializzazione del modello TensorRT
-        self.engine = None
-        self.context_pool = None
-        self.lock = Lock()
-
-        custom_plugin_path = kwargs.get("custom_plugin_path", None)
-        if custom_plugin_path is not None:
-            # Carica il plugin personalizzato solo una volta
-            if platform.system().lower() == 'linux':
-                ctypes.CDLL(custom_plugin_path, mode=ctypes.RTLD_GLOBAL)
-            else:
-                ctypes.CDLL(custom_plugin_path, mode=ctypes.RTLD_GLOBAL, winmode=0)
-
-        # Load TRT engine
-        engine_path = kwargs.get("model_path", None)
-        self.debug = kwargs.get("debug", False)
-        self.pool_size = kwargs.get("pool_size", 10)
-        assert engine_path, f"model:{engine_path} must exist!"
-
-        # Caricamento dell'engine TensorRT
-        with open(engine_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-            assert runtime
-            self.engine = runtime.deserialize_cuda_engine(f.read())
-        assert self.engine
-
-        # Setup I/O bindings e contesto
-        self.inputs = []
-        self.outputs = []
-        self.tensors = OrderedDict()
-
-        # Gestione dei tensori dinamici
-        for idx in range(self.engine.num_io_tensors):
-            name = self.engine.get_tensor_name(idx)
-            is_input = self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT
-            shape = self.engine.get_tensor_shape(name)
-            dtype = trt.nptype(self.engine.get_tensor_dtype(name))
-
-            binding = {
-                "index": idx,
-                "name": name,
-                "dtype": dtype,
-                "shape": list(shape)
-            }
-            if is_input:
-                self.inputs.append(binding)
-            else:
-                self.outputs.append(binding)
-
-        assert len(self.inputs) > 0
-        assert len(self.outputs) > 0
-        self.allocate_max_buffers()
-
-        # Creazione del pool di contesti di esecuzione
-        self.context_pool = Queue(maxsize=self.pool_size)
-        for _ in range(self.pool_size):
-            self.context_pool.put(self.engine.create_execution_context())
-
-    def allocate_max_buffers(self, device="cuda"):
-        nvtx.range_push("allocate_max_buffers")
-        # Supporto per batch dinamico
-        batch_size = 1
-        for idx in range(self.engine.num_io_tensors):
-            binding = self.engine.get_tensor_name(idx)
-            shape = self.engine.get_tensor_shape(binding)
-            is_input = self.engine.get_tensor_mode(binding) == trt.TensorIOMode.INPUT
-            if -1 in shape:
-                if is_input:
-                    shape = self.engine.get_tensor_profile_shape(binding, 0)[-1]
-                    batch_size = shape[0]
-                else:
-                    shape[0] = batch_size
-            dtype = trt.nptype(self.engine.get_tensor_dtype(binding))
-            tensor = torch.empty(
-                tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]
-            ).to(device=device)
-            self.tensors[binding] = tensor
-        nvtx.range_pop()
-
-    def input_spec(self):
-        """
-        Get the specs for the input tensor of the network. Useful to prepare memory allocations.
-        :return: Two items, the shape of the input tensor and its (numpy) datatype.
-        """
-        specs = []
-        for i, o in enumerate(self.inputs):
-            specs.append((o["name"], o['shape'], o['dtype']))
-            if self.debug:
-                print(f"trt input {i} -> {o['name']} -> {o['shape']}")
-        return specs
-
-    def output_spec(self):
-        """
-        Get the specs for the output tensors of the network. Useful to prepare memory allocations.
-        :return: A list with two items per element, the shape and (numpy) datatype of each output tensor.
-        """
-        specs = []
-        for i, o in enumerate(self.outputs):
-            specs.append((o["name"], o['shape'], o['dtype']))
-            if self.debug:
-                print(f"trt output {i} -> {o['name']} -> {o['shape']}")
-        return specs
-
-    def adjust_buffer(self, feed_dict, context):
-        """
-        Adjust input buffer sizes and set input shapes in the given execution context.
-        :param feed_dict: A dictionary of inputs as numpy arrays.
-        :param context: The TensorRT execution context to set input shapes.
-        """
-        nvtx.range_push("adjust_buffer")
-        for name, buf in feed_dict.items():
-            input_tensor = self.tensors[name]
-            current_shape = list(buf.shape)
-            slices = tuple(slice(0, dim) for dim in current_shape)
-            input_tensor[slices].copy_(buf)
-            # Imposta la forma di input nel contesto fornito
-            context.set_input_shape(name, current_shape)
-        nvtx.range_pop()
-
-    def predict(self, feed_dict):
-        """
-        Execute inference on a batch of images in synchronous mode using execute_v2.
-        :param feed_dict: A dictionary of inputs as numpy arrays.
-        :return: A dictionary of outputs as PyTorch tensors.
-        """
-        # Ottieni un contesto dal pool
-        with self.lock:
-            context = self.context_pool.get()
-
-        try:
-            nvtx.range_push("set_tensors")
-            # Passa il contesto a adjust_buffer
-            self.adjust_buffer(feed_dict, context)
-
-            for name, tensor in self.tensors.items():
-                assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
-                context.set_tensor_address(name, tensor.data_ptr())
-            
-            nvtx.range_pop()
-
-            # Prepara i binding per execute_v2()
-            bindings = [tensor.data_ptr() for tensor in self.tensors.values()]
-
-            # Esecuzione sincrona con execute_v2()
-            nvtx.range_push("execute")
-            noerror = context.execute_v2(bindings)
-            if not noerror:
-                raise ValueError("ERROR: inference failed.")
-            nvtx.range_pop()
-
-            return self.tensors
-
-        finally:
-            # Restituisci il contesto al pool dopo l'uso
-            with self.lock:
-                self.context_pool.put(context)
-
-    def predict_async(self, feed_dict, stream):
-        """
-        Execute inference on a batch of images in asynchronous mode using execute_async_v3.
-        :param feed_dict: A dictionary of inputs as numpy arrays.
-        :param stream: A CUDA stream for asynchronous execution.
-        :return: A dictionary of outputs as PyTorch tensors.
-        """
-        # Ottieni un contesto dal pool
-        with self.lock:
-            context = self.context_pool.get()
-
-        try:
-            nvtx.range_push("set_tensors")
-            # Passa il contesto a adjust_buffer
-            self.adjust_buffer(feed_dict, context)
-
-            for name, tensor in self.tensors.items():
-                assert tensor.dtype == torch.float32, f"Tensor '{name}' should be torch.float32 but is {tensor.dtype}"
-                context.set_tensor_address(name, tensor.data_ptr())
-            
-            nvtx.range_pop()
-
-            # Esecuzione asincrona con execute_async_v3()
-            nvtx.range_push("execute_async")
-            noerror = context.execute_async_v3(stream)
-            if not noerror:
-                raise ValueError("ERROR: inference failed.")
-            nvtx.range_pop()
-
-            return self.tensors
-
-        finally:
-            # Restituisci il contesto al pool dopo l'uso
-            with self.lock:
-                self.context_pool.put(context)
-
-    def cleanup(self):
-        """
-        Clean up all resources associated with the TensorRTPredictor.
-        This method should be called explicitly before deleting the object.
-        """
-        # Pulisci l'engine TensorRT
-        if hasattr(self, 'engine') and self.engine is not None:
-            del self.engine  # Libera l'engine di TensorRT
-            self.engine = None  # Imposta a None per assicurarti che il GC lo raccolga
-
-        # Pulisci il pool di contesti di esecuzione
-        if hasattr(self, 'context_pool') and self.context_pool is not None:
-            while not self.context_pool.empty():
-                context = self.context_pool.get()
-                del context  # Libera ogni contesto
-            self.context_pool = None  # Imposta a None per il GC
-
-        # Imposta gli attributi su None per garantire la pulizia
-        self.inputs = None
-        self.outputs = None
-        self.tensors = None
-        self.pool_size = None
-
-    def __del__(self):
-        # Richiama il metodo cleanup nel distruttore per maggiore sicurezza
-        self.cleanup()
+onnxruntime.set_default_logger_severity(4)
+onnxruntime.log_verbosity_level = -1
 
 class Models():
-    def __init__(self):
+    def __init__(self, device='cuda'):
         self.arcface_dst = np.array( [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [41.5493, 92.3655], [70.7299, 92.2041]], dtype=np.float32)
         #self.providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         self.providers = [
             ('CUDAExecutionProvider'),
             ('CPUExecutionProvider')]
-        self.provider_name = 'CUDAExecutionProvider'
+        self.provider_name = 'CUDA'
+        self.device = device
+        self.trt_ep_options = {
+            'trt_max_workspace_size': 3 << 30,  # Dimensione massima dello spazio di lavoro in bytes
+            'trt_engine_cache_enable': True,
+            'trt_engine_cache_path': "tensorrt-engines",
+            'trt_timing_cache_enable': True,
+            'trt_timing_cache_path': "tensorrt-engines",
+            'trt_dump_ep_context_model': True,
+            'trt_ep_context_file_path': "tensorrt-engines",
+            'trt_layer_norm_fp32_fallback': True,
+            'trt_builder_optimization_level': 5,
+        }
         self.retinaface_model = []
         self.yoloface_model = []
         self.scrdf_model = []
@@ -345,6 +101,7 @@ class Models():
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
+        self.clip_session = []
 
         self.normalize = v2.Normalize(mean = [ 0., 0., 0. ],
                                       std = [ 1/1.0, 1/1.0, 1/1.0 ])
@@ -369,45 +126,45 @@ class Models():
         self.lp_stitching_eye_model = []
         self.lp_stitching_lip_model = []
         self.lp_warping_spade_fix_model = []
-        self.lp_mask_crop = faceutil.create_faded_inner_mask(size=(512, 512), border_thickness=5, fade_thickness=15, blur_radius=5, device='cuda')
+        self.lp_mask_crop = faceutil.create_faded_inner_mask(size=(512, 512), border_thickness=5, fade_thickness=15, blur_radius=5, device=self.device)
         self.lp_mask_crop = torch.unsqueeze(self.lp_mask_crop, 0)
         self.lp_mask_crop = torch.mul(self.lp_mask_crop, 255.)
         self.nThreads = 5
+        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device=self.device)
 
     def switch_providers_priority(self, provider_name):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device != "cuda" and (provider_name == "TensorRT" or provider_name == "TensorRT-Engine" or provider_name == "CUDA"):
+            provider_name = "CPU"
+
         match provider_name:
             case "TensorRT" | "TensorRT-Engine":
                 providers = [
-                                ('TensorrtExecutionProvider', {
-                                    'trt_engine_cache_enable': True,
-                                    'trt_engine_cache_path': "tensorrt-engines",
-                                    'trt_timing_cache_enable': True,
-                                    'trt_timing_cache_path': "tensorrt-engines",
-                                    'trt_dump_ep_context_model': True,
-                                    'trt_ep_context_file_path': "tensorrt-engines",
-                                    'trt_layer_norm_fp32_fallback': True,
-                                    'trt_builder_optimization_level': 5,
-                                }),
+                                ('TensorrtExecutionProvider', self.trt_ep_options),
                                 ('CUDAExecutionProvider'),
                                 ('CPUExecutionProvider')
                             ]
+                self.device = 'cuda'
                 if version.parse(trt.__version__) < version.parse("10.2.0") and provider_name == "TensorRT-Engine":
                     print("TensorRT-Engine provider cannot be used when TensorRT version is lower than 10.2.0.")
                     provider_name = "TensorRT"
 
             case "CPU":
                 providers = [
-                                ('CPUExecutionProvider'),
-                                ('CUDAExecutionProvider')
+                                ('CPUExecutionProvider')
                             ]
-            case _:
+                self.device = 'cpu'
+            case "CUDA":
                 providers = [
                                 ('CUDAExecutionProvider'),
                                 ('CPUExecutionProvider')
                             ]
+                self.device = 'cuda'
+            #case _:
 
         self.providers = providers
         self.provider_name = provider_name
+        self.lp_mask_crop = self.lp_mask_crop.to(self.device)
 
         return self.provider_name
 
@@ -592,7 +349,7 @@ class Models():
         self.occluder_model = []
         self.model_xseg = []
         self.faceparser_model = []
-        self.dfl_model = []
+        self.clip_session = []
         self.dfl_models = {}
         self.delete_trt_models(False)
 
@@ -692,11 +449,14 @@ class Models():
             self.swapper_model = onnxruntime.InferenceSession( "./models/inswapper_128.fp16.onnx", providers=self.providers)
 
         io_binding = self.swapper_model.io_binding()
-        io_binding.bind_input(name='target', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,128,128), buffer_ptr=image.data_ptr())
-        io_binding.bind_input(name='source', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,128,128), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='target', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,128,128), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='source', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,128,128), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.swapper_model.run_with_iobinding(io_binding)
 
     def calc_swapper_latent_simswap512(self, source_embedding):
@@ -710,11 +470,14 @@ class Models():
             self.simswap512_model = onnxruntime.InferenceSession( "./models/simswap_512_unoff.onnx", providers=self.providers)
 
         io_binding = self.simswap512_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_input(name='onnx::Gemm_1', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='onnx::Gemm_1', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.simswap512_model.run_with_iobinding(io_binding)
 
     def calc_swapper_latent_ghost(self, source_embedding):
@@ -746,27 +509,28 @@ class Models():
             #output_name2 = 'onnx::ConvTranspose_415'
 
         io_binding = ghostfaceswap_model.io_binding()
-        io_binding.bind_input(name='target', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
-        io_binding.bind_input(name='source', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
-        io_binding.bind_output(name=output_name, device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='target', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='source', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,512), buffer_ptr=embedding.data_ptr())
+        io_binding.bind_output(name=output_name, device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         ghostfaceswap_model.run_with_iobinding(io_binding)
-
-    def calc_swapper_latent_dfl(self, source_embedding):
-        latent = source_embedding.reshape((1,-1))
-
-        return latent
 
     def run_GFPGAN(self, image, output):
         if not self.GFPGAN_model:
             self.GFPGAN_model = onnxruntime.InferenceSession( "./models/GFPGANv1.4.onnx", providers=self.providers)
 
         io_binding = self.GFPGAN_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.GFPGAN_model.run_with_iobinding(io_binding)
 
     def run_GPEN_2048(self, image, output):
@@ -774,10 +538,13 @@ class Models():
             self.GPEN_2048_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-2048.onnx", providers=self.providers)
 
         io_binding = self.GPEN_2048_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,2048,2048), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.GPEN_2048_model.run_with_iobinding(io_binding)
 
     def run_GPEN_1024(self, image, output):
@@ -785,10 +552,13 @@ class Models():
             self.GPEN_1024_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-1024.onnx", providers=self.providers)
 
         io_binding = self.GPEN_1024_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,1024,1024), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,1024,1024), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,1024,1024), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,1024,1024), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.GPEN_1024_model.run_with_iobinding(io_binding)
 
     def run_GPEN_512(self, image, output):
@@ -796,10 +566,13 @@ class Models():
             self.GPEN_512_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-512.onnx", providers=self.providers)
 
         io_binding = self.GPEN_512_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.GPEN_512_model.run_with_iobinding(io_binding)
 
     def run_GPEN_256(self, image, output):
@@ -807,10 +580,13 @@ class Models():
             self.GPEN_256_model = onnxruntime.InferenceSession( "./models/GPEN-BFR-256.onnx", providers=self.providers)
 
         io_binding = self.GPEN_256_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.GPEN_256_model.run_with_iobinding(io_binding)
 
     def run_codeformer(self, image, output, fidelity_weight_value=0.9):
@@ -818,12 +594,15 @@ class Models():
             self.codeformer_model = onnxruntime.InferenceSession( "./models/codeformer_fp16.onnx", providers=self.providers)
 
         io_binding = self.codeformer_model.io_binding()
-        io_binding.bind_input(name='x', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='x', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
         w = np.array([fidelity_weight_value], dtype=np.double)
         io_binding.bind_cpu_input('w', w)
-        io_binding.bind_output(name='y', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_output(name='y', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.codeformer_model.run_with_iobinding(io_binding)
 
     def run_VQFR_v2(self, image, output, fidelity_ratio_value):
@@ -831,17 +610,20 @@ class Models():
             self.VQFR_v2_model = onnxruntime.InferenceSession( "./models/VQFRv2.fp16.onnx", providers=self.providers)
 
         assert fidelity_ratio_value >= 0.0 and fidelity_ratio_value <= 1.0, 'fidelity_ratio must in range[0,1]'
-        fidelity_ratio = torch.tensor(fidelity_ratio_value).to('cuda')
+        fidelity_ratio = torch.tensor(fidelity_ratio_value).to(self.device)
 
         io_binding = self.VQFR_v2_model.io_binding()
-        io_binding.bind_input(name='x_lq', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_input(name='fidelity_ratio', device_type='cuda', device_id=0, element_type=np.float32, shape=fidelity_ratio.size(), buffer_ptr=fidelity_ratio.data_ptr())
-        io_binding.bind_output('enc_feat', 'cuda')
-        io_binding.bind_output('quant_logit', 'cuda')
-        io_binding.bind_output('texture_dec', 'cuda')
-        io_binding.bind_output(name='main_dec', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='x_lq', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_input(name='fidelity_ratio', device_type=self.device, device_id=0, element_type=np.float32, shape=fidelity_ratio.size(), buffer_ptr=fidelity_ratio.data_ptr())
+        io_binding.bind_output('enc_feat', self.device)
+        io_binding.bind_output('quant_logit', self.device)
+        io_binding.bind_output('texture_dec', self.device)
+        io_binding.bind_output(name='main_dec', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.VQFR_v2_model.run_with_iobinding(io_binding)
 
     def run_RestoreFormerPlusPlus(self, image, output):
@@ -849,24 +631,27 @@ class Models():
             self.RestoreFormerPlusPlus_model = onnxruntime.InferenceSession( "./models/RestoreFormerPlusPlus.fp16.onnx", providers=self.providers)
 
         io_binding = self.RestoreFormerPlusPlus_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='2359', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
-        io_binding.bind_output('1228', 'cuda')
-        io_binding.bind_output('1238', 'cuda')
-        io_binding.bind_output('onnx::MatMul_1198', 'cuda')
-        io_binding.bind_output('onnx::Shape_1184', 'cuda')
-        io_binding.bind_output('onnx::ArgMin_1182', 'cuda')
-        io_binding.bind_output('input.1', 'cuda')
-        io_binding.bind_output('x', 'cuda')
-        io_binding.bind_output('x.3', 'cuda')
-        io_binding.bind_output('x.7', 'cuda')
-        io_binding.bind_output('x.11', 'cuda')
-        io_binding.bind_output('x.15', 'cuda')
-        io_binding.bind_output('input.252', 'cuda')
-        io_binding.bind_output('input.280', 'cuda')
-        io_binding.bind_output('input.288', 'cuda')
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='2359', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_output('1228', self.device)
+        io_binding.bind_output('1238', self.device)
+        io_binding.bind_output('onnx::MatMul_1198', self.device)
+        io_binding.bind_output('onnx::Shape_1184', self.device)
+        io_binding.bind_output('onnx::ArgMin_1182', self.device)
+        io_binding.bind_output('input.1', self.device)
+        io_binding.bind_output('x', self.device)
+        io_binding.bind_output('x.3', self.device)
+        io_binding.bind_output('x.7', self.device)
+        io_binding.bind_output('x.11', self.device)
+        io_binding.bind_output('x.15', self.device)
+        io_binding.bind_output('input.252', self.device)
+        io_binding.bind_output('input.280', self.device)
+        io_binding.bind_output('input.288', self.device)
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.RestoreFormerPlusPlus_model.run_with_iobinding(io_binding)
 
     def run_enhance_frame_tile_process(self, img, enhancer_type, tile_size=256, scale=1):
@@ -886,7 +671,7 @@ class Models():
 
         # Creazione di un output tensor vuoto
         b, c, h, w = img.shape
-        output = torch.empty((b, c, h * scale, w * scale), dtype=torch.float32, device='cuda').contiguous()
+        output = torch.empty((b, c, h * scale, w * scale), dtype=torch.float32, device=self.device).contiguous()
 
         # Selezione della funzione di upscaling in base al tipo
         upscaler_functions = {
@@ -915,7 +700,7 @@ class Models():
 
                     # Estrazione del tile di input
                     input_tile = img[:, :, y_start:y_end, x_start:x_end].contiguous()
-                    output_tile = torch.empty((input_tile.shape[0], input_tile.shape[1], input_tile.shape[2] * scale, input_tile.shape[3] * scale), dtype=torch.float32, device='cuda').contiguous()
+                    output_tile = torch.empty((input_tile.shape[0], input_tile.shape[1], input_tile.shape[2] * scale, input_tile.shape[3] * scale), dtype=torch.float32, device=self.device).contiguous()
 
                     # Upscaling del tile
                     fn_upscaler(input_tile, output_tile)
@@ -936,10 +721,13 @@ class Models():
             self.realesrganx2plus_model = onnxruntime.InferenceSession( "./models/RealESRGAN_x2plus.fp16.onnx", providers=self.providers)
 
         io_binding = self.realesrganx2plus_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.realesrganx2plus_model.run_with_iobinding(io_binding)
 
     def run_bsrganx2(self, image, output):
@@ -947,10 +735,13 @@ class Models():
             self.bsrganx2_model = onnxruntime.InferenceSession( "./models/BSRGANx2.fp16.onnx", providers=self.providers)
 
         io_binding = self.bsrganx2_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.bsrganx2_model.run_with_iobinding(io_binding)
 
     def run_realesrganx4(self, image, output):
@@ -958,10 +749,13 @@ class Models():
             self.realesrganx4plus_model = onnxruntime.InferenceSession( "./models/RealESRGAN_x4plus.fp16.onnx", providers=self.providers)
 
         io_binding = self.realesrganx4plus_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.realesrganx4plus_model.run_with_iobinding(io_binding)
 
     def run_realesrx4v3(self, image, output):
@@ -969,10 +763,13 @@ class Models():
             self.realesrx4v3_model = onnxruntime.InferenceSession( "./models/realesr-general-x4v3.onnx", providers=self.providers)
 
         io_binding = self.realesrx4v3_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.realesrx4v3_model.run_with_iobinding(io_binding)
 
     def run_bsrganx4(self, image, output):
@@ -980,10 +777,13 @@ class Models():
             self.bsrganx4_model = onnxruntime.InferenceSession( "./models/BSRGANx4.fp16.onnx", providers=self.providers)
 
         io_binding = self.bsrganx4_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.bsrganx4_model.run_with_iobinding(io_binding)
 
     def run_ultrasharpx4(self, image, output):
@@ -991,10 +791,13 @@ class Models():
             self.ultrasharpx4_model = onnxruntime.InferenceSession( "./models/4x-UltraSharp.fp16.onnx", providers=self.providers)
 
         io_binding = self.ultrasharpx4_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.ultrasharpx4_model.run_with_iobinding(io_binding)
 
     def run_ultramixx4(self, image, output):
@@ -1002,10 +805,13 @@ class Models():
             self.ultramixx4_model = onnxruntime.InferenceSession( "./models/4x-UltraMix_Smooth.fp16.onnx", providers=self.providers)
 
         io_binding = self.ultramixx4_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.ultramixx4_model.run_with_iobinding(io_binding)
 
     def run_deoldify_artistic(self, image, output):
@@ -1013,10 +819,13 @@ class Models():
             self.deoldify_art_model = onnxruntime.InferenceSession( "./models/ColorizeArtistic.fp16.onnx", providers=self.providers)
 
         io_binding = self.deoldify_art_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.deoldify_art_model.run_with_iobinding(io_binding)
 
     def run_deoldify_stable(self, image, output):
@@ -1024,10 +833,13 @@ class Models():
             self.deoldify_stable_model = onnxruntime.InferenceSession( "./models/ColorizeStable.fp16.onnx", providers=self.providers)
 
         io_binding = self.deoldify_stable_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.deoldify_stable_model.run_with_iobinding(io_binding)
 
     def run_deoldify_video(self, image, output):
@@ -1035,10 +847,13 @@ class Models():
             self.deoldify_video_model = onnxruntime.InferenceSession( "./models/ColorizeVideo.fp16.onnx", providers=self.providers)
 
         io_binding = self.deoldify_video_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.deoldify_video_model.run_with_iobinding(io_binding)
 
     def run_ddcolor_artistic(self, image, output):
@@ -1046,10 +861,13 @@ class Models():
             self.ddcolor_art_model = onnxruntime.InferenceSession( "./models/ddcolor_artistic.onnx", providers=self.providers)
 
         io_binding = self.ddcolor_art_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.ddcolor_art_model.run_with_iobinding(io_binding)
 
     def run_ddcolor(self, image, output):
@@ -1057,10 +875,13 @@ class Models():
             self.ddcolor_model = onnxruntime.InferenceSession( "./models/ddcolor.onnx", providers=self.providers)
 
         io_binding = self.ddcolor_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.ddcolor_model.run_with_iobinding(io_binding)
 
     def run_occluder(self, image, output):
@@ -1068,10 +889,13 @@ class Models():
             self.occluder_model = onnxruntime.InferenceSession("./models/occluder.onnx", providers=self.providers)
 
         io_binding = self.occluder_model.io_binding()
-        io_binding.bind_input(name='img', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='img', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.occluder_model.run_with_iobinding(io_binding)
 
     def run_dfl_xseg(self, image, output):
@@ -1079,23 +903,75 @@ class Models():
             self.model_xseg = onnxruntime.InferenceSession("./models/XSeg_model.onnx", providers=self.providers)
 
         io_binding = self.model_xseg.io_binding()
-        io_binding.bind_input(name='in_face:0', device_type='cuda', device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='out_mask:0', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='in_face:0', device_type=self.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='out_mask:0', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.model_xseg.run_with_iobinding(io_binding)
 
+    # https://github.com/yakhyo/face-parsing
     def run_faceparser(self, image, output):
         if not self.faceparser_model:
-            self.faceparser_model = onnxruntime.InferenceSession("./models/faceparser_fp16.onnx", providers=self.providers)
+            self.faceparser_model = onnxruntime.InferenceSession("./models/faceparser_resnet34.onnx", providers=self.providers)
 
         image = image.contiguous()
         io_binding = self.faceparser_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='out', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.faceparser_model.run_with_iobinding(io_binding)
+
+    def run_CLIPs(self, img, CLIPText, CLIPAmount):
+        # Ottieni il dispositivo su cui si trova l'immagine
+        device = img.device
+
+        # Controllo se la sessione CLIP è già stata inizializzata
+        if not self.clip_session:
+            self.clip_session = CLIPDensePredT(version='ViT-B/16', reduce_dim=64, complex_trans_conv=True)
+            self.clip_session.eval()
+            self.clip_session.load_state_dict(torch.load('./models/rd64-uni-refined.pth', weights_only=True), strict=False)
+            self.clip_session.to(device)  # Sposta il modello sul dispositivo dell'immagine
+
+        # Crea un mask tensor direttamente sul dispositivo dell'immagine
+        clip_mask = torch.ones((352, 352), device=device)
+
+        # L'immagine è già un tensore, quindi la converto a float32 e la normalizzo nel range [0, 1]
+        img = img.float() / 255.0  # Conversione in float32 e normalizzazione
+
+        # Rimuovi la parte ToTensor(), dato che img è già un tensore.
+        transform = transforms.Compose([
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Resize((352, 352))
+        ])
+
+        # Applica la trasformazione all'immagine
+        CLIPimg = transform(img).unsqueeze(0).contiguous().to(device)
+
+        # Se ci sono prompt CLIPText, esegui la predizione
+        if CLIPText != "":
+            prompts = CLIPText.split(',')
+
+            with torch.no_grad():
+                # Esegui la predizione sulla sessione CLIP
+                preds = self.clip_session(CLIPimg.repeat(len(prompts), 1, 1, 1), prompts)[0]
+
+            # Calcola la maschera CLIP usando la sigmoid e tieni tutto sul dispositivo
+            clip_mask = 1 - torch.sigmoid(preds[0][0])
+            for i in range(len(prompts) - 1):
+                clip_mask *= 1 - torch.sigmoid(preds[i + 1][0])
+
+            # Applica la soglia sulla maschera
+            thresh = CLIPAmount / 100.0
+            clip_mask = (clip_mask > thresh).float()
+
+        return clip_mask.unsqueeze(0)  # Ritorna il tensore torch direttamente
 
     def detect_retinaface(self, img, max_num, score, use_landmark_detection, landmark_detect_mode, landmark_score, from_points, rotation_angles:list[int]=[0]):
         if use_landmark_detection:
@@ -1119,7 +995,7 @@ class Models():
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device='cuda:0')
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to RGB and normalize
@@ -1151,20 +1027,23 @@ class Models():
                 aimg = torch.unsqueeze(det_img, 0).contiguous()
 
             io_binding = self.retinaface_model.io_binding()
-            io_binding.bind_input(name='input.1', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name='input.1', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-            io_binding.bind_output('448', 'cuda')
-            io_binding.bind_output('471', 'cuda')
-            io_binding.bind_output('494', 'cuda')
-            io_binding.bind_output('451', 'cuda')
-            io_binding.bind_output('474', 'cuda')
-            io_binding.bind_output('497', 'cuda')
-            io_binding.bind_output('454', 'cuda')
-            io_binding.bind_output('477', 'cuda')
-            io_binding.bind_output('500', 'cuda')
+            io_binding.bind_output('448', self.device)
+            io_binding.bind_output('471', self.device)
+            io_binding.bind_output('494', self.device)
+            io_binding.bind_output('451', self.device)
+            io_binding.bind_output('474', self.device)
+            io_binding.bind_output('497', self.device)
+            io_binding.bind_output('454', self.device)
+            io_binding.bind_output('477', self.device)
+            io_binding.bind_output('500', self.device)
 
             # Sync and run model
-            torch.cuda.synchronize()
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+            elif self.device != "cpu":
+                self.syncvec.cpu()
             self.retinaface_model.run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -1182,7 +1061,6 @@ class Models():
                 kps_preds = net_outs[idx+fmc*2] * stride
                 height = input_height // stride
                 width = input_width // stride
-                K = height * width
                 key = (height, width, stride)
                 if key in center_cache:
                     anchor_centers = center_cache[key]
@@ -1378,7 +1256,7 @@ class Models():
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device='cuda:0')
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to RGB and normalize
@@ -1416,13 +1294,16 @@ class Models():
                 aimg = torch.unsqueeze(det_img, 0).contiguous()
 
             io_binding = self.scrdf_model.io_binding()
-            io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name=input_name, device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
             for i in range(len(output_names)):
-                io_binding.bind_output(output_names[i], 'cuda')
+                io_binding.bind_output(output_names[i], self.device)
 
             # Sync and run model
-            torch.cuda.synchronize()
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+            elif self.device != "cpu":
+                self.syncvec.cpu()
             self.scrdf_model.run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -1440,7 +1321,6 @@ class Models():
                 kps_preds = net_outs[idx+fmc*2] * stride
                 height = input_height // stride
                 width = input_width // stride
-                K = height * width
                 key = (height, width, stride)
                 if key in center_cache:
                     anchor_centers = center_cache[key]
@@ -1637,7 +1517,7 @@ class Models():
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.device)
         det_img[:new_height,:new_width,  :] = img
 
         det_img = det_img.permute(2, 0, 1)
@@ -1671,11 +1551,14 @@ class Models():
                 IM = None
 
             io_binding = self.yoloface_model.io_binding()
-            io_binding.bind_input(name='images', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
-            io_binding.bind_output('output0', 'cuda')
+            io_binding.bind_input(name='images', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_output('output0', self.device)
 
             # Sync and run model
-            torch.cuda.synchronize()
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+            elif self.device != "cpu":
+                self.syncvec.cpu()
             self.yoloface_model.run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -1870,7 +1753,7 @@ class Models():
 
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device='cuda')
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to BGR
@@ -1908,13 +1791,16 @@ class Models():
             aimg = aimg.to(dtype=torch.float32)
 
             io_binding = self.yunet_model.io_binding()
-            io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name=input_name, device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
             for i in range(len(output_names)):
-                io_binding.bind_output(output_names[i], 'cuda')
+                io_binding.bind_output(output_names[i], self.device)
 
             # Sync and run model
-            torch.cuda.synchronize()
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+            elif self.device != "cpu":
+                self.syncvec.cpu()
             self.yunet_model.run_with_iobinding(io_binding)
             net_outs = io_binding.copy_outputs_to_cpu()
 
@@ -2108,7 +1994,7 @@ class Models():
 
         image = image.permute(1,2,0)
 
-        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device='cuda')
+        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device=self.device)
         image = torch.sub(image, mean)
 
         image = image.permute(2,0,1)
@@ -2116,22 +2002,25 @@ class Models():
 
         height, width = (512, 512)
         tmp = [width, height, width, height, width, height, width, height, width, height]
-        scale1 = torch.tensor(tmp, dtype=torch.float32, device='cuda')
+        scale1 = torch.tensor(tmp, dtype=torch.float32, device=self.device)
 
-        conf = torch.empty((1,10752,2), dtype=torch.float32, device='cuda').contiguous()
-        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device='cuda').contiguous()
+        conf = torch.empty((1,10752,2), dtype=torch.float32, device=self.device).contiguous()
+        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device=self.device).contiguous()
 
         io_binding = self.resnet50_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='conf', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
-        io_binding.bind_output(name='landmarks', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='conf', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
+        io_binding.bind_output(name='landmarks', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.resnet50_model.run_with_iobinding(io_binding)
 
         scores = torch.squeeze(conf)[:, 1]
         priors = torch.tensor(self.anchors).view(-1, 4)
-        priors = priors.to('cuda')
+        priors = priors.to(self.device)
 
         pre = torch.squeeze(landmarks, 0)
 
@@ -2177,13 +2066,16 @@ class Models():
         crop_image = torch.unsqueeze(crop_image, 0).contiguous()
 
         io_binding = self.face_landmark_68_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
 
-        io_binding.bind_output('landmarks_xyscore', 'cuda')
-        io_binding.bind_output('heatmaps', 'cuda')
+        io_binding.bind_output('landmarks_xyscore', self.device)
+        io_binding.bind_output('heatmaps', self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.face_landmark_68_model.run_with_iobinding(io_binding)
         net_outs = io_binding.copy_outputs_to_cpu()
         face_landmark_68 = net_outs[0]
@@ -2215,12 +2107,15 @@ class Models():
         aimg = aimg.to(dtype=torch.float32)
         aimg = self.normalize(aimg)
         io_binding = self.face_landmark_3d68_model.io_binding()
-        io_binding.bind_input(name='data', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='data', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('fc1', 'cuda')
+        io_binding.bind_output('fc1', self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.face_landmark_3d68_model.run_with_iobinding(io_binding)
         pred = io_binding.copy_outputs_to_cpu()[0][0]
 
@@ -2270,12 +2165,15 @@ class Models():
             crop_image = torch.unsqueeze(crop_image, 0).contiguous()
 
             io_binding = self.face_landmark_98_model.io_binding()
-            io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
+            io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
 
-            io_binding.bind_output('landmarks_xyscore', 'cuda')
+            io_binding.bind_output('landmarks_xyscore', self.device)
 
             # Sync and run model
-            torch.cuda.synchronize()
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+            elif self.device != "cpu":
+                self.syncvec.cpu()
             self.face_landmark_98_model.run_with_iobinding(io_binding)
             landmarks_xyscore = io_binding.copy_outputs_to_cpu()[0]
 
@@ -2314,12 +2212,15 @@ class Models():
         aimg = aimg.to(dtype=torch.float32)
         aimg = self.normalize(aimg)
         io_binding = self.face_landmark_106_model.io_binding()
-        io_binding.bind_input(name='data', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='data', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('fc1', 'cuda')
+        io_binding.bind_output('fc1', self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.face_landmark_106_model.run_with_iobinding(io_binding)
         pred = io_binding.copy_outputs_to_cpu()[0][0]
 
@@ -2364,14 +2265,17 @@ class Models():
         aimg = aimg.to(dtype=torch.float32)
         aimg = torch.div(aimg, 255.0)
         io_binding = self.face_landmark_203_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('output', 'cuda')
-        io_binding.bind_output('853', 'cuda')
-        io_binding.bind_output('856', 'cuda')
+        io_binding.bind_output('output', self.device)
+        io_binding.bind_output('853', self.device)
+        io_binding.bind_output('856', self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.face_landmark_203_model.run_with_iobinding(io_binding)
         out_lst = io_binding.copy_outputs_to_cpu()
         out_pts = out_lst[2]
@@ -2405,14 +2309,17 @@ class Models():
         aimg = aimg.to(dtype=torch.float32)
         aimg = torch.div(aimg, 255.0)
         io_binding = self.face_landmark_478_model.io_binding()
-        io_binding.bind_input(name='input_12', device_type='cuda', device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='input_12', device_type=self.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('Identity', 'cuda')
-        io_binding.bind_output('Identity_1', 'cuda')
-        io_binding.bind_output('Identity_2', 'cuda')
+        io_binding.bind_output('Identity', self.device)
+        io_binding.bind_output('Identity_1', self.device)
+        io_binding.bind_output('Identity_2', self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.face_landmark_478_model.run_with_iobinding(io_binding)
         landmarks, faceflag, blendshapes = io_binding.copy_outputs_to_cpu()
         landmarks = landmarks.reshape( (1,478,3))
@@ -2438,14 +2345,17 @@ class Models():
                 landmark_for_score = landmark_for_score[:, :2]
                 landmark_for_score = np.expand_dims(landmark_for_score, axis=0)
                 landmark_for_score = landmark_for_score.astype(np.float32)
-                landmark_for_score = torch.from_numpy(landmark_for_score).to('cuda')
+                landmark_for_score = torch.from_numpy(landmark_for_score).to(self.device)
 
                 io_binding_bs = self.face_blendshapes_model.io_binding()
-                io_binding_bs.bind_input(name='input_points', device_type='cuda', device_id=0, element_type=np.float32,  shape=tuple(landmark_for_score.shape), buffer_ptr=landmark_for_score.data_ptr())
-                io_binding_bs.bind_output('output', 'cuda')
+                io_binding_bs.bind_input(name='input_points', device_type=self.device, device_id=0, element_type=np.float32,  shape=tuple(landmark_for_score.shape), buffer_ptr=landmark_for_score.data_ptr())
+                io_binding_bs.bind_output('output', self.device)
 
                 # Sync and run model
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 self.face_blendshapes_model.run_with_iobinding(io_binding_bs)
                 landmark_score = io_binding_bs.copy_outputs_to_cpu()[0]
 
@@ -2504,13 +2414,16 @@ class Models():
             output_names.append(o.name)
 
         io_binding = recognition_model.io_binding()
-        io_binding.bind_input(name=input_name, device_type='cuda', device_id=0, element_type=np.float32,  shape=img.size(), buffer_ptr=img.data_ptr())
+        io_binding.bind_input(name=input_name, device_type=self.device, device_id=0, element_type=np.float32,  shape=img.size(), buffer_ptr=img.data_ptr())
 
         for i in range(len(output_names)):
-            io_binding.bind_output(output_names[i], 'cuda')
+            io_binding.bind_output(output_names[i], self.device)
 
         # Sync and run model
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         recognition_model.run_with_iobinding(io_binding)
 
         # Return embedding
@@ -2540,7 +2453,7 @@ class Models():
 
         image = image.permute(1,2,0)
 
-        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device='cuda')
+        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device=self.device)
         image = torch.sub(image, mean)
 
         image = image.permute(2,0,1)
@@ -2548,23 +2461,26 @@ class Models():
 
         height, width = (512, 512)
         tmp = [width, height, width, height, width, height, width, height, width, height]
-        scale1 = torch.tensor(tmp, dtype=torch.float32, device='cuda')
+        scale1 = torch.tensor(tmp, dtype=torch.float32, device=self.device)
 
-        conf = torch.empty((1,10752,2), dtype=torch.float32, device='cuda').contiguous()
-        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device='cuda').contiguous()
+        conf = torch.empty((1,10752,2), dtype=torch.float32, device=self.device).contiguous()
+        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device=self.device).contiguous()
 
         io_binding = self.resnet50_model.io_binding()
-        io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='conf', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
-        io_binding.bind_output(name='landmarks', device_type='cuda', device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='conf', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
+        io_binding.bind_output(name='landmarks', device_type=self.device, device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
 
-        torch.cuda.synchronize()
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        elif self.device != "cpu":
+            self.syncvec.cpu()
         self.resnet50_model.run_with_iobinding(io_binding)
 
         scores = torch.squeeze(conf)[:, 1]
 
         priors = torch.tensor(self.anchors).view(-1, 4)
-        priors = priors.to('cuda')
+        priors = priors.to(self.device)
 
         pre = torch.squeeze(landmarks, 0)
 
@@ -2601,7 +2517,7 @@ class Models():
                                      trt_model_path=None, precision="fp32",
                                      verbose=False
                                     )
-                        self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads)
+                        self.lp_motion_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/motion_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads, device=self.device)
 
                 motion_extractor_model = self.lp_motion_extractor_model
 
@@ -2641,25 +2557,28 @@ class Models():
                 I_s = torch.clamp(I_s, 0, 1)  # clamp to 0~1
                 I_s = torch.unsqueeze(I_s, 0).contiguous()
 
-                pitch = torch.empty((1,66), dtype=torch.float32, device='cuda').contiguous()
-                yaw = torch.empty((1,66), dtype=torch.float32, device='cuda').contiguous()
-                roll = torch.empty((1,66), dtype=torch.float32, device='cuda').contiguous()
-                t = torch.empty((1,3), dtype=torch.float32, device='cuda').contiguous()
-                exp = torch.empty((1,63), dtype=torch.float32, device='cuda').contiguous()
-                scale = torch.empty((1,1), dtype=torch.float32, device='cuda').contiguous()
-                kp = torch.empty((1,63), dtype=torch.float32, device='cuda').contiguous()
+                pitch = torch.empty((1,66), dtype=torch.float32, device=self.device).contiguous()
+                yaw = torch.empty((1,66), dtype=torch.float32, device=self.device).contiguous()
+                roll = torch.empty((1,66), dtype=torch.float32, device=self.device).contiguous()
+                t = torch.empty((1,3), dtype=torch.float32, device=self.device).contiguous()
+                exp = torch.empty((1,63), dtype=torch.float32, device=self.device).contiguous()
+                scale = torch.empty((1,1), dtype=torch.float32, device=self.device).contiguous()
+                kp = torch.empty((1,63), dtype=torch.float32, device=self.device).contiguous()
 
                 io_binding = motion_extractor_model.io_binding()
-                io_binding.bind_input(name='img', device_type='cuda', device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
-                io_binding.bind_output(name='pitch', device_type='cuda', device_id=0, element_type=np.float32, shape=pitch.size(), buffer_ptr=pitch.data_ptr())
-                io_binding.bind_output(name='yaw', device_type='cuda', device_id=0, element_type=np.float32, shape=yaw.size(), buffer_ptr=yaw.data_ptr())
-                io_binding.bind_output(name='roll', device_type='cuda', device_id=0, element_type=np.float32, shape=roll.size(), buffer_ptr=roll.data_ptr())
-                io_binding.bind_output(name='t', device_type='cuda', device_id=0, element_type=np.float32, shape=t.size(), buffer_ptr=t.data_ptr())
-                io_binding.bind_output(name='exp', device_type='cuda', device_id=0, element_type=np.float32, shape=exp.size(), buffer_ptr=exp.data_ptr())
-                io_binding.bind_output(name='scale', device_type='cuda', device_id=0, element_type=np.float32, shape=scale.size(), buffer_ptr=scale.data_ptr())
-                io_binding.bind_output(name='kp', device_type='cuda', device_id=0, element_type=np.float32, shape=kp.size(), buffer_ptr=kp.data_ptr())
+                io_binding.bind_input(name='img', device_type=self.device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
+                io_binding.bind_output(name='pitch', device_type=self.device, device_id=0, element_type=np.float32, shape=pitch.size(), buffer_ptr=pitch.data_ptr())
+                io_binding.bind_output(name='yaw', device_type=self.device, device_id=0, element_type=np.float32, shape=yaw.size(), buffer_ptr=yaw.data_ptr())
+                io_binding.bind_output(name='roll', device_type=self.device, device_id=0, element_type=np.float32, shape=roll.size(), buffer_ptr=roll.data_ptr())
+                io_binding.bind_output(name='t', device_type=self.device, device_id=0, element_type=np.float32, shape=t.size(), buffer_ptr=t.data_ptr())
+                io_binding.bind_output(name='exp', device_type=self.device, device_id=0, element_type=np.float32, shape=exp.size(), buffer_ptr=exp.data_ptr())
+                io_binding.bind_output(name='scale', device_type=self.device, device_id=0, element_type=np.float32, shape=scale.size(), buffer_ptr=scale.data_ptr())
+                io_binding.bind_output(name='kp', device_type=self.device, device_id=0, element_type=np.float32, shape=kp.size(), buffer_ptr=kp.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 motion_extractor_model.run_with_iobinding(io_binding)
 
                 kp_info = {
@@ -2693,7 +2612,7 @@ class Models():
                                      trt_model_path=None, precision="fp16",
                                      verbose=False
                                     )
-                        self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads)
+                        self.lp_appearance_feature_extractor_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/appearance_feature_extractor." + trt.__version__ + ".trt", pool_size=self.nThreads, device=self.device)
 
                 appearance_feature_extractor_model = self.lp_appearance_feature_extractor_model
 
@@ -2725,13 +2644,16 @@ class Models():
                 I_s = torch.clamp(I_s, 0, 1)  # clamp to 0~1
                 I_s = torch.unsqueeze(I_s, 0).contiguous()
 
-                output = torch.empty((1,32,16,64,64), dtype=torch.float32, device='cuda').contiguous()
+                output = torch.empty((1,32,16,64,64), dtype=torch.float32, device=self.device).contiguous()
 
                 io_binding = appearance_feature_extractor_model.io_binding()
-                io_binding.bind_input(name='img', device_type='cuda', device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
-                io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+                io_binding.bind_input(name='img', device_type=self.device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 appearance_feature_extractor_model.run_with_iobinding(io_binding)
 
         return output
@@ -2751,7 +2673,7 @@ class Models():
                                      trt_model_path=None, precision="fp16",
                                      verbose=False
                                     )
-                        self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye." + trt.__version__ + ".trt", pool_size=self.nThreads)
+                        self.lp_stitching_eye_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_eye." + trt.__version__ + ".trt", pool_size=self.nThreads, device=self.device)
 
                 stitching_eye_model = self.lp_stitching_eye_model
 
@@ -2776,13 +2698,16 @@ class Models():
                     stitching_eye_model = self.lp_stitching_eye_model
 
                 feat_eye = faceutil.concat_feat(kp_source, eye_close_ratio).contiguous()
-                delta = torch.empty((1,63), dtype=torch.float32, device='cuda').contiguous()
+                delta = torch.empty((1,63), dtype=torch.float32, device=self.device).contiguous()
 
                 io_binding = stitching_eye_model.io_binding()
-                io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=feat_eye.size(), buffer_ptr=feat_eye.data_ptr())
-                io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=feat_eye.size(), buffer_ptr=feat_eye.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 stitching_eye_model.run_with_iobinding(io_binding)
 
         return delta.reshape(-1, kp_source.shape[1], 3)
@@ -2802,7 +2727,7 @@ class Models():
                                      trt_model_path=None, precision="fp16",
                                      verbose=False
                                     )
-                        self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip." + trt.__version__ + ".trt", pool_size=self.nThreads)
+                        self.lp_stitching_lip_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching_lip." + trt.__version__ + ".trt", pool_size=self.nThreads, device=self.device)
 
                 stitching_lip_model = self.lp_stitching_lip_model
 
@@ -2827,13 +2752,16 @@ class Models():
                     stitching_lip_model = self.lp_stitching_lip_model
 
                 feat_lip = faceutil.concat_feat(kp_source, lip_close_ratio).contiguous()
-                delta = torch.empty((1,63), dtype=torch.float32, device='cuda').contiguous()
+                delta = torch.empty((1,63), dtype=torch.float32, device=self.device).contiguous()
 
                 io_binding = stitching_lip_model.io_binding()
-                io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=feat_lip.size(), buffer_ptr=feat_lip.data_ptr())
-                io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=feat_lip.size(), buffer_ptr=feat_lip.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 stitching_lip_model.run_with_iobinding(io_binding)
 
         return delta.reshape(-1, kp_source.shape[1], 3)
@@ -2853,7 +2781,7 @@ class Models():
                                      trt_model_path=None, precision="fp16",
                                      verbose=False
                                     )
-                        self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching." + trt.__version__ + ".trt", pool_size=self.nThreads)
+                        self.lp_stitching_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/stitching." + trt.__version__ + ".trt", pool_size=self.nThreads, device=self.device)
 
                 stitching_model = self.lp_stitching_model
 
@@ -2878,13 +2806,16 @@ class Models():
                     stitching_model = self.lp_stitching_model
 
                 feat_stiching = faceutil.concat_feat(kp_source, kp_driving).contiguous()
-                delta = torch.empty((1,65), dtype=torch.float32, device='cuda').contiguous()
+                delta = torch.empty((1,65), dtype=torch.float32, device=self.device).contiguous()
 
                 io_binding = stitching_model.io_binding()
-                io_binding.bind_input(name='input', device_type='cuda', device_id=0, element_type=np.float32, shape=feat_stiching.size(), buffer_ptr=feat_stiching.data_ptr())
-                io_binding.bind_output(name='output', device_type='cuda', device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.device, device_id=0, element_type=np.float32, shape=feat_stiching.size(), buffer_ptr=feat_stiching.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 stitching_model.run_with_iobinding(io_binding)
 
         return delta
@@ -2925,7 +2856,7 @@ class Models():
                                      custom_plugin_path="./models/grid_sample_3d_plugin.dll",
                                      verbose=False
                                     )
-                        self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix." + trt.__version__ + ".trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll", pool_size=self.nThreads)
+                        self.lp_warping_spade_fix_model = TensorRTPredictor(model_path="./models/liveportrait_onnx/warping_spade-fix." + trt.__version__ + ".trt", custom_plugin_path="./models/grid_sample_3d_plugin.dll", pool_size=self.nThreads, device=self.device)
 
                 warping_spade_model = self.lp_warping_spade_fix_model
 
@@ -2956,14 +2887,17 @@ class Models():
                 kp_source = kp_source.contiguous()
                 kp_driving = kp_driving.contiguous()
 
-                out = torch.empty((1,3,512,512), dtype=torch.float32, device='cuda').contiguous()
+                out = torch.empty((1,3,512,512), dtype=torch.float32, device=self.device).contiguous()
                 io_binding = warping_spade_model.io_binding()
-                io_binding.bind_input(name='feature_3d', device_type='cuda', device_id=0, element_type=np.float32, shape=feature_3d.size(), buffer_ptr=feature_3d.data_ptr())
-                io_binding.bind_input(name='kp_driving', device_type='cuda', device_id=0, element_type=np.float32, shape=kp_driving.size(), buffer_ptr=kp_driving.data_ptr())
-                io_binding.bind_input(name='kp_source', device_type='cuda', device_id=0, element_type=np.float32, shape=kp_source.size(), buffer_ptr=kp_source.data_ptr())
-                io_binding.bind_output(name='out', device_type='cuda', device_id=0, element_type=np.float32, shape=out.size(), buffer_ptr=out.data_ptr())
+                io_binding.bind_input(name='feature_3d', device_type=self.device, device_id=0, element_type=np.float32, shape=feature_3d.size(), buffer_ptr=feature_3d.data_ptr())
+                io_binding.bind_input(name='kp_driving', device_type=self.device, device_id=0, element_type=np.float32, shape=kp_driving.size(), buffer_ptr=kp_driving.data_ptr())
+                io_binding.bind_input(name='kp_source', device_type=self.device, device_id=0, element_type=np.float32, shape=kp_source.size(), buffer_ptr=kp_source.data_ptr())
+                io_binding.bind_output(name='out', device_type=self.device, device_id=0, element_type=np.float32, shape=out.size(), buffer_ptr=out.data_ptr())
 
-                torch.cuda.synchronize()
+                if self.device == "cuda":
+                    torch.cuda.synchronize()
+                elif self.device != "cpu":
+                    self.syncvec.cpu()
                 warping_spade_model.run_with_iobinding(io_binding)
 
         return out

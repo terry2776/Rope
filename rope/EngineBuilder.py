@@ -3,16 +3,23 @@ import sys
 import logging
 import platform
 import ctypes
-import tensorrt as trt
 import numpy as np
 from pathlib import Path
+
+try:
+    import tensorrt as trt
+except ModuleNotFoundError:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("EngineBuilder").setLevel(logging.INFO)
 log = logging.getLogger("EngineBuilder")
 
-# Creazione di un'istanza globale di logger di TensorRT
-TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+if 'trt' in globals():
+    # Creazione di un'istanza globale di logger di TensorRT
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+else:
+    TRT_LOGGER = {}
 
 # imported from https://github.com/warmshao/FasterLivePortrait/blob/master/scripts/onnx2trt.py
 # adjusted to work with TensorRT 10.3.0
@@ -117,7 +124,7 @@ def change_extension(file_path, new_extension, version=None):
     """
     # Remove leading '.' from the new extension if present
     new_extension = new_extension.lstrip('.')
-    
+
     # Create the new file path with the version before the extension, if provided
     if version:
         new_file_path = Path(file_path).with_suffix(f'.{version}.{new_extension}')

@@ -31,228 +31,9 @@ import inspect #print(inspect.currentframe().f_back.f_code.co_name, 'resize_imag
 import platform
 from platform import system
 from rope.Dicts import CAMERA_BACKENDS
-
+from rope.FaceLandmarks import FaceLandmarks
+from rope.FaceEditor import FaceEditor
 import gc
-# Face Landmarks
-class FaceLandmarks:
-    def __init__(self, widget = {}, parameters = {}, add_action = {}):
-        self.data = {}
-        self.widget = widget
-        self.parameters = parameters
-        self.add_action = add_action
-
-    def add_landmarks(self, frame_number, face_id, landmarks):
-        if frame_number not in self.data:
-            self.data[frame_number] = {}
-        self.data[frame_number][face_id] = landmarks
-
-    def get_landmarks(self, frame_number, face_id):
-        return self.data.get(frame_number, {}).get(face_id, None)
-
-    def get_all_landmarks_for_frame(self, frame_number):
-        return self.data.get(frame_number, {})
-
-    def reset_landmarks_for_face_id(self, frame_number, face_id):
-        if frame_number in self.data:
-            landmarks = self.data.get(frame_number, {}).get(face_id, None)
-            if landmarks is not None:
-                landmarks = [(0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)]
-
-    def remove_all_landmarks_for_frame(self, frame_number):
-        if frame_number in self.data:
-            self.data[frame_number] = {}
-
-    def remove_all_data(self):
-        self.data = {}
-
-    def apply_max_face_id_to_widget(self, frame_number, value):
-        if self.widget and self.parameters and self.add_action:
-            if self.widget['FaceIDSlider'].set_max(value, False):
-                self.apply_changes_to_widget_and_parameters(frame_number, self.widget['FaceIDSlider'].get())
-
-                return True
-
-            return False
-
-    def apply_changes_to_widget_and_parameters(self, frame_number, face_id):
-        if self.widget and self.parameters and self.add_action:
-            landmarks = self.data.get(frame_number, {}).get(face_id, None)
-            if landmarks is not None:
-                self.widget['FaceIDSlider'].set(face_id, request_frame=False)
-                self.parameters['FaceIDSlider'] = face_id
-
-                self.widget['EyeLeftXSlider'].set(landmarks[0][0], request_frame=False)
-                self.parameters['EyeLeftXSlider'] = landmarks[0][0]
-
-                self.widget['EyeLeftYSlider'].set(landmarks[0][1], request_frame=False)
-                self.parameters['EyeLeftYSlider'] = landmarks[0][1]
-
-                self.widget['EyeRightXSlider'].set(landmarks[1][0], request_frame=False)
-                self.parameters['EyeRightXSlider'] = landmarks[1][0]
-
-                self.widget['EyeRightYSlider'].set(landmarks[1][1], request_frame=False)
-                self.parameters['EyeRightYSlider'] = landmarks[1][1]
-
-                self.widget['NoseXSlider'].set(landmarks[2][0], request_frame=False)
-                self.parameters['NoseXSlider'] = landmarks[2][0]
-
-                self.widget['NoseYSlider'].set(landmarks[2][1], request_frame=False)
-                self.parameters['NoseYSlider'] = landmarks[2][1]
-
-                self.widget['MouthLeftXSlider'].set(landmarks[3][0], request_frame=False)
-                self.parameters['MouthLeftXSlider'] = landmarks[3][0]
-
-                self.widget['MouthLeftYSlider'].set(landmarks[3][1], request_frame=False)
-                self.parameters['MouthLeftYSlider'] = landmarks[3][1]
-
-                self.widget['MouthRightXSlider'].set(landmarks[4][0], request_frame=False)
-                self.parameters['MouthRightXSlider'] = landmarks[4][0]
-
-                self.widget['MouthRightYSlider'].set(landmarks[4][1], request_frame=False)
-                self.parameters['MouthRightYSlider'] = landmarks[4][1]
-
-            else:
-                self.widget['FaceIDSlider'].set(1, request_frame=False)
-                self.parameters['FaceIDSlider'] = 1
-
-                self.widget['EyeLeftXSlider'].set(0, request_frame=False)
-                self.parameters['EyeLeftXSlider'] = 0
-
-                self.widget['EyeLeftYSlider'].set(0, request_frame=False)
-                self.parameters['EyeLeftYSlider'] = 0
-
-                self.widget['EyeRightXSlider'].set(0, request_frame=False)
-                self.parameters['EyeRightXSlider'] = 0
-
-                self.widget['EyeRightYSlider'].set(0, request_frame=False)
-                self.parameters['EyeRightYSlider'] = 0
-
-                self.widget['NoseXSlider'].set(0, request_frame=False)
-                self.parameters['NoseXSlider'] = 0
-
-                self.widget['NoseYSlider'].set(0, request_frame=False)
-                self.parameters['NoseYSlider'] = 0
-
-                self.widget['MouthLeftXSlider'].set(0, request_frame=False)
-                self.parameters['MouthLeftXSlider'] = 0
-
-                self.widget['MouthLeftYSlider'].set(0, request_frame=False)
-                self.parameters['MouthLeftYSlider'] = 0
-
-                self.widget['MouthRightXSlider'].set(0, request_frame=False)
-                self.parameters['MouthRightXSlider'] = 0
-
-                self.widget['MouthRightYSlider'].set(0, request_frame=False)
-                self.parameters['MouthRightYSlider'] = 0
-
-            self.add_action('parameters', self.parameters)
-
-# Face Editor
-class FaceEditor:
-    def __init__(self, widget=None, parameters=None, add_action=None):
-        self.data = {}
-        self.widget = widget or {}
-        self.parameters = parameters or {}
-        self.add_action = add_action or (lambda action, params: None)
-
-        # Default parameters for a face
-        self.default_parameters = [
-            'Human-Face', 2.50, 0.00, 0.00, 0, 0, 0, 0.00, 0.00, 1.00, 0.00, 0.00, 0.00, 0,
-            0.00, 0.00, 0.00, 0.00, 0.00
-        ]
-
-        # Map parameter names to widget keys
-        # Mappatura dei nomi dei widget agli indici dei parametri
-        self.parameter_map = {
-            "FaceEditorTypeTextSel": 0,
-            "CropScaleSlider": 1,
-            "EyesOpenRatioSlider": 2,
-            "LipsOpenRatioSlider": 3,
-            "HeadPitchSlider": 4,
-            "HeadYawSlider": 5,
-            "HeadRollSlider": 6,
-            "XAxisMovementSlider": 7,
-            "YAxisMovementSlider": 8,
-            "ZAxisMovementSlider": 9,
-            "MouthPoutingSlider": 10,
-            "MouthPursingSlider": 11,
-            "MouthGrinSlider": 12,
-            "LipsCloseOpenSlider": 13,
-            "MouthSmileSlider": 14,
-            "EyeWinkSlider": 15,
-            "EyeBrowsDirectionSlider": 16,
-            "EyeGazeHorizontalSlider": 17,
-            "EyeGazeVerticalSlider": 18
-        }
-
-        self.default_named_parameters = {name: self.default_parameters[index] for name, index in self.parameter_map.items()}
-
-    def add_parameters(self, frame_number, face_id, parameters):
-        if frame_number not in self.data:
-            self.data[frame_number] = {}
-        self.data[frame_number][face_id] = parameters
-
-    def get_parameters(self, frame_number, face_id):
-        return self.data.get(frame_number, {}).get(face_id, None)
-
-    def get_named_parameters(self, frame_number, face_id):
-        """
-        Restituisce una lista di tuple (nome_parametro, valore) per un dato frame e face_id.
-        """
-        parameters = self.get_parameters(frame_number, face_id) or self.default_parameters
-
-        # Crea un dizionario con i nomi dei parametri come chiavi e i loro valori
-        named_parameters = {name: parameters[index] for name, index in self.parameter_map.items()}
-
-        return named_parameters
-
-    def are_parameters_default(self, parameters):
-        """
-        Verifica se i parameters forniti sono uguali a self.default_parameters.
-        """
-        return parameters == self.default_parameters
-
-    def are_named_parameters_default(self, named_parameters):
-        """
-        Verifica se i named_parameters forniti sono uguali a self.default_parameters.
-        """
-        return named_parameters == self.default_named_parameters
-
-    def get_all_parameters_for_frame(self, frame_number):
-        return self.data.get(frame_number, {})
-
-    def reset_parameters_for_face_id(self, frame_number, face_id):
-        if frame_number in self.data and face_id in self.data[frame_number]:
-            self.data[frame_number][face_id] = self.default_parameters.copy()
-
-    def remove_all_parameters_for_frame(self, frame_number):
-        if frame_number in self.data:
-            self.data[frame_number] = {}
-
-    def remove_all_data(self):
-        self.data = {}
-
-    def apply_max_face_id_to_widget(self, frame_number, value):
-        if self.widget and self.parameters and self.add_action:
-            if self.widget['FaceEditorIDSlider'].set_max(value, False):
-                self.apply_changes_to_widget_and_parameters(frame_number, self.widget['FaceIDSlider'].get())
-
-                return True
-
-            return False
-
-    def apply_changes_to_widget_and_parameters(self, frame_number, face_id):
-        parameters = self.get_parameters(frame_number, face_id) or self.default_parameters
-        self.parameters['FaceEditorIDSlider'] = face_id
-        self.widget.get('FaceEditorIDSlider', {}).set(face_id, request_frame=False)
-
-        for i, param_key in enumerate(self.parameter_map):
-            value = parameters[i]
-            if param_key in self.widget:
-                self.widget[param_key].set(value, request_frame=False)
-            self.parameters[param_key] = value
-
-        self.add_action('parameters_face_editor', self.parameters)
 
 class GUI(tk.Tk):
     def __init__(self, models):
@@ -370,6 +151,7 @@ class GUI(tk.Tk):
                     "Previous Marker": "q",
                     "Next Marker": "w",
                     "Toggle Restorer": "1",
+                    "Toggle Restorer2": "h",
                     "Toggle Orientation": "2",
                     "Toggle Strength": "3",
                     "Toggle Differencing": "4",
@@ -404,6 +186,7 @@ class GUI(tk.Tk):
             shortcuts["Previous Marker"]: lambda: self.update_marker('prev'),
             shortcuts["Next Marker"]: lambda: self.update_marker('next'),
             shortcuts["Toggle Restorer"]: lambda: self.toggle_and_update('Restorer', 'Restorer'),
+            shortcuts["Toggle Restorer2"]: lambda: self.toggle_and_update('Restorer2', 'Restorer2'),
             shortcuts["Toggle Orientation"]: lambda: self.toggle_and_update('Orient', 'Orientation'),
             shortcuts["Toggle Strength"]: lambda: self.toggle_and_update('Strength', 'Strength'),
             shortcuts["Toggle Differencing"]: lambda: self.toggle_and_update('Diff', 'Differencing'),
@@ -595,6 +378,7 @@ class GUI(tk.Tk):
                     "Previous Marker": "q",
                     "Next Marker": "w",
                     "Toggle Restorer": "1",
+                    "Toggle Restorer2": "h",
                     "Toggle Orientation": "2",
                     "Toggle Strength": "3",
                     "Toggle Differencing": "4",
@@ -1086,8 +870,12 @@ class GUI(tk.Tk):
         frame.grid(row=0, column=1)
         self.widget['MaskViewButton'] = GE.Button(frame, 'MaskView', 2, self.toggle_maskview, None, 'control', x=0, y=0, width=100)
 
-        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=200)
+        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=100)
         frame.grid(row=0, column=2)
+        self.widget['CompareViewButton'] = GE.Button(frame, 'CompareView', 2, self.toggle_compareview, None, 'control', x=0, y=0, width=100)
+
+        frame = tk.Frame(preview_data, style.canvas_frame_label_2, height = 24, width=200)
+        frame.grid(row=0, column=3)
         self.widget['PreviewModeTextSel'] = GE.TextSelection(frame, 'PreviewModeTextSel', '', 2, self.set_view, True, 'control', width=200, height=20, row=0, column=0, padx=1, pady=0, text_percent=1)
 
       # Preview Window
@@ -1122,7 +910,7 @@ class GUI(tk.Tk):
         # Left Side
         self.layer['play_controls_left'] = tk.Frame(self.layer['preview_frame'], style.canvas_frame_label_2, height=30, width=100 )
         self.layer['play_controls_left'].grid(row=0, column=0, sticky='NEWS', pady=0)
-        self.widget['SaveImageButton'] = GE.Button(self.layer['play_controls_left'], 'SaveImageButton', 2, self.save_image, None, 'control', x=10, y=5, width=100)
+        self.widget['SaveImageButton'] = GE.Button(self.layer['play_controls_left'], 'SaveImageButton', 2, self.save_image, None, 'control', x=0, y=5, width=100)
 
         # Center
         cente_frame = tk.Frame(self.layer['preview_frame'], style.canvas_frame_label_2, height=30, )
@@ -1158,7 +946,7 @@ class GUI(tk.Tk):
     # Images
         self.layer['image_controls'] = tk.Frame(self.layer['preview_column'], style.canvas_frame_label_2, height=80)
         self.layer['image_controls'].grid(row=2, column=0, rowspan=2, sticky='NEWS', pady=0)
-        self.widget['SaveImageButton'] = GE.Button(self.layer['image_controls'], 'SaveImageButton', 2, self.save_image, None, 'control', x=10, y=5, width=100)
+        self.widget['SaveImageButton'] = GE.Button(self.layer['image_controls'], 'SaveImageButton', 2, self.save_image, None, 'control', x=0, y=5, width=100)
         self.widget['AutoSwapButton'] = GE.Button(self.layer['image_controls'], 'AutoSwapButton', 2, self.toggle_auto_swap, None, 'control', x=150, y=5, width=100)
 
         self.layer['image_controls'].grid_forget()
@@ -1177,14 +965,14 @@ class GUI(tk.Tk):
         ff_frame.grid_rowconfigure(0, weight=0)
 
         # Buttons
-        button_frame = tk.Frame(ff_frame, style.canvas_frame_label_2, height = 166, width = 112)
+        button_frame = tk.Frame(ff_frame, style.canvas_frame_label_2, height = 99, width = 224)
         button_frame.grid( row = 0, column = 0, )
 
-        self.widget['FindFacesButton'] = GE.Button(button_frame, 'FindFaces', 2, self.find_faces, None, 'control', x=0, y=0, width=112, height=33)
-        self.widget['ClearFacesButton'] = GE.Button(button_frame, 'ClearFaces', 2, self.clear_faces, None, 'control', x=0, y=33, width=112, height=33)
-        self.widget['SwapFacesButton'] = GE.Button(button_frame, 'SwapFaces', 2, self.toggle_swapper, None, 'control', x=0, y=66, width=112, height=33)
-        self.widget['EditFacesButton'] = GE.Button(button_frame, 'EditFaces', 2, self.toggle_faces_editor, None, 'control', x=0, y=99, width=112, height=33)
-        self.widget['EnhanceFrameButton'] = GE.Button(button_frame, 'EnhanceFrame', 2, self.toggle_enhancer, None, 'control', x=0, y=132, width=112, height=33)
+        self.widget['FindFacesButton'] = GE.Button(button_frame, 'FindFaces', 2, self.find_faces, None, 'control', x=112, y=0, width=112, height=33)
+        self.widget['ClearFacesButton'] = GE.Button(button_frame, 'ClearFaces', 2, self.clear_faces, None, 'control', x=112, y=33, width=112, height=33)
+        self.widget['SwapFacesButton'] = GE.Button(button_frame, 'SwapFaces', 2, self.toggle_swapper, None, 'control', x=0, y=0, width=112, height=33)
+        self.widget['EditFacesButton'] = GE.Button(button_frame, 'EditFaces', 2, self.toggle_faces_editor, None, 'control', x=0, y=33, width=112, height=33)
+        self.widget['EnhanceFrameButton'] = GE.Button(button_frame, 'EnhanceFrame', 2, self.toggle_enhancer, None, 'control', x=0, y=66, width=112, height=33)
 
         # Scroll Canvas
         self.found_faces_canvas = tk.Canvas(ff_frame, style.canvas_frame_label_3, height = 100 )
@@ -1205,12 +993,12 @@ class GUI(tk.Tk):
         button_frame = tk.Frame(mf_frame, style.canvas_frame_label_2, height = 100, width = 112)
         button_frame.grid( row = 0, column = 0, )
 
-        self.widget['DelEmbedButton'] = GE.Button(button_frame, 'DelEmbed', 2, self.delete_merged_embedding, None, 'control', x=0, y=0, width=112, height=33)
+        self.widget['DelEmbedButton'] = GE.Button(button_frame, 'DelEmbed', 2, self.delete_merged_embedding, None, 'control', x=0, y=30, width=112, height=33)
 
         # Merged Embeddings Text
         self.merged_embedding_name = tk.StringVar()
         self.merged_embeddings_text = tk.Entry(button_frame, style.entry_2, textvariable=self.merged_embedding_name)
-        self.merged_embeddings_text.place(x=8, y=37, width = 96, height=20)
+        self.merged_embeddings_text.place(x=8, y=8, width = 96, height=20)
         self.merged_embeddings_text.bind("<Return>", lambda event: self.save_selected_source_faces(self.merged_embedding_name))
         self.me_name = self.nametowidget(self.merged_embeddings_text)
 
@@ -1340,6 +1128,16 @@ class GUI(tk.Tk):
         row = row + 1
         self.widget['RestorerSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestorerSlider', 'Restorer Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
 
+        # Restore2
+        row = row + 1
+        self.widget['Restorer2Switch'] = GE.Switch2(self.layer['parameters_frame'], 'Restorer2Switch', '2. Restorer', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['Restorer2TypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'Restorer2TypeTextSel', '2. Restorer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
+        row = row + 1
+        self.widget['Restorer2DetTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'Restorer2DetTypeTextSel', '2. Detection Alignment', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+        row = row + 1
+        self.widget['Restorer2Slider'] = GE.Slider2(self.layer['parameters_frame'], 'Restorer2Slider', '2. Restorer Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.72)
+
         # Frame Restorer
         row = row + 1
         self.widget['FrameEnhancerTypeTextSel'] = GE.TextSelectionComboBox(self.layer['parameters_frame'], 'FrameEnhancerTypeTextSel', 'Enhancer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.72, 150)
@@ -1375,10 +1173,8 @@ class GUI(tk.Tk):
         self.widget['DiffSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DiffSwitch', 'Differencing', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
         row = row + 1
         self.widget['DiffSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DiffSlider', 'Amount', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
-
-        # Blur
         row = row + 1
-        self.widget['BlendSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BlendSlider', 'Overall Mask Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        self.widget['DiffingBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DiffingBlurSlider', 'Diff Blend Amount', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # Occluder
         row = row + 1
@@ -1391,6 +1187,18 @@ class GUI(tk.Tk):
         self.widget['DFLXSegSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'DFLXSegSwitch', 'DFL XSeg', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
         row = row + 1
         self.widget['DFLXSegSlider'] = GE.Slider2(self.layer['parameters_frame'], 'DFLXSegSlider', 'Size', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['OccluderBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'OccluderBlurSlider', 'Occluder/XSeg Blur', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
+        # FinalBlurSlider
+        row = row + 1
+        self.widget['FinalBlurSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FinalBlurSwitch', 'Final Blur Switch', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['FinalBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FinalBlurSlider', 'Final Face Blur', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
+        # Overall MaskBlendSlider
+        row = row + 1
+        self.widget['BlendSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BlendSlider', 'Overall Mask Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # DFL RCT Color Transfer
         row = row + 1
@@ -1418,6 +1226,8 @@ class GUI(tk.Tk):
         row = row + 1
         self.widget['RestoreEyesSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSlider', 'Eyes Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
         row = row + 1
+        self.widget['Eyes_Mouth_BlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'Eyes_Mouth_BlurSlider', 'Eyes&Mouth Mask Blur', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
         self.widget['RestoreEyesFeatherSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesFeatherSlider', 'Eyes Feather Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
         row = row + 1
         self.widget['RestoreEyesSizeSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSizeSlider', 'Eyes Size Factor', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
@@ -1425,6 +1235,12 @@ class GUI(tk.Tk):
         self.widget['RestoreEyesRadiusFactorXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesRadiusFactorXSlider', 'Eyes Radius Factor: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
         row = row + 1
         self.widget['RestoreEyesRadiusFactorYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesRadiusFactorYSlider', 'Eyes Radius Factor: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesSpacingOffsetSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesSpacingOffsetSlider', 'Eyes Spacing Offset', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesXoffsetSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesXoffsetSlider', 'Eyes Offset: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreEyesYoffsetSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreEyesYoffsetSlider', 'Eyes Offset: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         #Restore Mouth
         row = row + 1
@@ -1439,11 +1255,20 @@ class GUI(tk.Tk):
         self.widget['RestoreMouthRadiusFactorXSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthRadiusFactorXSlider', 'Mouth Radius Factor: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
         row = row + 1
         self.widget['RestoreMouthRadiusFactorYSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthRadiusFactorYSlider', 'Mouth Radius Factor: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthXoffsetSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthXoffsetSlider', 'Mouth Offset: X', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['RestoreMouthYoffsetSlider'] = GE.Slider2(self.layer['parameters_frame'], 'RestoreMouthYoffsetSlider', 'Mouth Offset: Y', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # FaceParser - Face
         row = row + 1
         self.widget['FaceParserSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'FaceParserSwitch', 'Face Parser', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
-        #Face Background & Neck
+
+        #Face Background & Blurs & Neck
+        row = row + 1
+        self.widget['BGParserBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'BGParserBlurSlider', 'Background Blur', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
+        row = row + 1
+        self.widget['ParserBlurSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ParserBlurSlider', 'FaceParser Blur', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
         row = row + 1
         self.widget['FaceParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'FaceParserSlider', 'Background', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
         row = row + 1
@@ -1473,6 +1298,20 @@ class GUI(tk.Tk):
         row = row + 1
         self.widget['LowerLipParserSlider'] = GE.Slider2(self.layer['parameters_frame'], 'LowerLipParserSlider', 'Lower Lip', 3, self.update_data, 'parameter', 300, 20, row, 0, padx, pady, 0.62, 40)
 
+        # Autocolor
+        row = row + 1
+        self.widget['AutoColorSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'AutoColorSwitch', 'AutoColor', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['AutoColorTypeTextSel'] = GE.TextSelection(self.layer['parameters_frame'], 'AutoColorTypeTextSel', 'Transfer Type', 3, self.update_data, 'parameter', 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['AutoColorSlider'] = GE.Slider2(self.layer['parameters_frame'], 'AutoColorSlider', 'AutoColor Blend', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
+        # Jpeg Compression
+        row = row + 1
+        self.widget['JpegCompressionSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'JpegCompressionSwitch', 'Jpeg Compression', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
+        row = row + 1
+        self.widget['JpegCompressionSlider'] = GE.Slider2(self.layer['parameters_frame'], 'JpegCompressionSlider', 'Jpeg Value', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+
         # Color Adjustments
         row = row + 1
         self.widget['ColorSwitch'] = GE.Switch2(self.layer['parameters_frame'], 'ColorSwitch', 'Color Adjustments', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady)
@@ -1494,6 +1333,8 @@ class GUI(tk.Tk):
         self.widget['ColorHueSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorHueSlider', 'Hue', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
         row = row + 1
         self.widget['ColorGammaSlider'] = GE.Slider2(self.layer['parameters_frame'], 'ColorGammaSlider', 'Gamma', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
+        row = row + 1
+        self.widget['NoiseSlider'] = GE.Slider2(self.layer['parameters_frame'], 'NoiseSlider', 'Noise', 3, self.update_data, 'parameter', 398, 20, row, 0, padx, pady, 0.62)
 
         # KPS Adjustment and scaling
         row = row + 1
@@ -2268,13 +2109,13 @@ class GUI(tk.Tk):
                     img = cv2.imread(file)
 
                     if img is not None:
-                        img = torch.from_numpy(img.astype('uint8')).to('cuda')
+                        img = torch.from_numpy(img.astype('uint8')).to(self.models.device)
 
                         pad_scale = 0.2
                         padded_width = int(img.size()[1]*(1.+pad_scale))
                         padded_height = int(img.size()[0]*(1.+pad_scale))
 
-                        padding = torch.zeros((padded_height, padded_width, 3), dtype=torch.uint8, device='cuda:0')
+                        padding = torch.zeros((padded_height, padded_width, 3), dtype=torch.uint8, device=self.models.device)
 
                         width_start = int(img.size()[1]*pad_scale/2)
                         width_end = width_start+int(img.size()[1])
@@ -2323,7 +2164,7 @@ class GUI(tk.Tk):
 
     def find_faces(self):
         try:
-            img = torch.from_numpy(self.video_image).to('cuda')
+            img = torch.from_numpy(self.video_image).to(self.models.device)
             img = img.permute(2,0,1)
             if self.parameters["AutoRotationSwitch"]:
                 rotation_angles = [0, 90, 180, 270]
@@ -2467,14 +2308,14 @@ class GUI(tk.Tk):
                         self.add_action("load_target_image", face["file"])
                         self.image_loaded = True
 
-        if self.source_faces[button]['DFLModel']:
-            # Clear DFL models from memory
-            if self.models.dfl_models and self.parameters['DFLLoadOnlyOneSwitch']:
-                for model in list(self.models.dfl_models):
-                    if model!=self.source_faces[button]['DFLModel']:
-                        del self.models.dfl_models[model]._sess
-                        del self.models.dfl_models[model]
-                gc.collect()
+            if self.source_faces[button]['DFLModel']:
+                # Clear DFL models from memory
+                if self.models.dfl_models and self.parameters['DFLLoadOnlyOneSwitch']:
+                    for model in list(self.models.dfl_models):
+                        if model!=self.source_faces[button]['DFLModel']:
+                            del self.models.dfl_models[model]._sess
+                            del self.models.dfl_models[model]
+                    gc.collect()
 
         # Assign all active input faces to the active target face
         for tface in self.target_faces:
@@ -2520,9 +2361,6 @@ class GUI(tk.Tk):
 
         self.add_action("target_faces", self.target_faces)
         self.add_action('get_requested_video_frame', self.video_slider.get())
-
-        # latent = torch.from_numpy(self.models.calc_swapper_latent(self.source_faces[button]['Embedding'])).float().to('cuda')
-        # face['ptrdata'] = self.models.run_swap_stg1(latent)
 
     def populate_target_videos(self):
         videos = []
@@ -2573,7 +2411,7 @@ class GUI(tk.Tk):
                     else:
                         ratio = float(image.shape[0]) / image.shape[1]
 
-                        new_height = 50
+                        new_height = 100
                         new_width = int(new_height / ratio)
                         image = cv2.resize(image, (new_width, new_height))
                         image[:new_height, :new_width, :] = image
@@ -2596,7 +2434,7 @@ class GUI(tk.Tk):
                                 video_frame = cv2.cvtColor(video_frame, cv2.COLOR_BGR2RGB)
                                 ratio = float(video_frame.shape[0]) / video_frame.shape[1]
 
-                                new_height = 50
+                                new_height = 100
                                 new_width = int(new_height / ratio)
                                 video_frame = cv2.resize(video_frame, (new_width, new_height))
                                 video_frame[:new_height, :new_width, :] = video_frame
@@ -2608,16 +2446,16 @@ class GUI(tk.Tk):
                                 print('Trouble reading file:', file)
                         else:
                             print('Trouble opening file:', file)
-        delx, dely = 100, 79
+        delx, dely = 100, 120
         if self.widget['PreviewModeTextSel'].get()== 'Image':#images
             for i in range(len(images)):
-                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 86, width = 86))
+                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 115, width = 190))
 
                 rgb_video = Image.fromarray(images[i][0])
                 self.target_media.append(ImageTk.PhotoImage(image=rgb_video))
                 self.target_media_buttons[i].config( image = self.target_media[i],  command=lambda i=i: self.load_target(i, images[i][1], self.widget['PreviewModeTextSel'].get()))
                 self.target_media_buttons[i].bind("<MouseWheel>", self.target_videos_mouse_wheel)
-                self.target_media_canvas.create_window((i%2)*delx, (i//2)*dely, window = self.target_media_buttons[i], anchor='nw')
+                self.target_media_canvas.create_window(0, i*dely, window = self.target_media_buttons[i], anchor='nw')
 
             #self.target_media_canvas.configure(scrollregion = self.target_media_canvas.bbox("all"))
             self.static_widget['input_videos_scrollbar'].resize_scrollbar(None)
@@ -2625,16 +2463,16 @@ class GUI(tk.Tk):
         elif self.widget['PreviewModeTextSel'].get()=='Video':#videos
 
             for i in range(len(videos)):
-                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 65, width = 90))
+                self.target_media_buttons.append(tk.Button(self.target_media_canvas, style.media_button_off_3, height = 115, width = 190))
                 self.target_media.append(ImageTk.PhotoImage(image=Image.fromarray(videos[i][0])))
 
                 filename = os.path.basename(videos[i][1])
-                if len(filename)>14:
-                    filename = filename[:11]+'...'
+                if len(filename)>32:
+                    filename = filename[:29]+'...'
 
                 self.target_media_buttons[i].bind("<MouseWheel>", self.target_videos_mouse_wheel)
                 self.target_media_buttons[i].config(image = self.target_media[i], text=filename, compound='top', anchor='n',command=lambda i=i: self.load_target(i, videos[i][1], self.widget['PreviewModeTextSel'].get()))
-                self.target_media_canvas.create_window((i%2)*delx, (i//2)*dely, window = self.target_media_buttons[i], anchor='nw')
+                self.target_media_canvas.create_window(0, i*dely, window = self.target_media_buttons[i], anchor='nw')
 
             self.static_widget['input_videos_scrollbar'].resize_scrollbar(None)
 
@@ -3228,6 +3066,15 @@ class GUI(tk.Tk):
                         "GPEN512": "GPEN-512"
                     }.get(value, value)  # Default to the original value if no match
                 },
+                "Restorer2TypeTextSel": lambda value, loaded_marker: {
+                    "Restorer2TypeTextSel": {
+                        "GFPGAN": "GFPGAN-v1.4",
+                        "CF": "CodeFormer",
+                        "GPEN256": "GPEN-256",
+                        "GPEN512": "GPEN-512"
+                    }.get(value, value)  # Default to the original value if no match
+                },
+
                 # Fix Face Parser Mouth Slider which is more granular now.
                 # Split former MouthSlider in two equal parts and assign to upper/lower lips.
                 "MouthParserSlider": lambda value, loaded_marker: (
@@ -3303,6 +3150,7 @@ class GUI(tk.Tk):
 
     def clear_mem(self):
         self.widget['RestorerSwitch'].set(False)
+        self.widget['Restorer2Switch'].set(False)
         self.widget['OccluderSwitch'].set(False)
         self.widget['FaceParserSwitch'].set(False)
         self.widget['CLIPSwitch'].set(False)
@@ -3348,6 +3196,12 @@ class GUI(tk.Tk):
     def toggle_maskview(self):
         self.widget['MaskViewButton'].toggle_button()
         self.control['MaskViewButton'] = self.widget['MaskViewButton'].get()
+        self.add_action('control', self.control)
+        self.add_action('get_requested_video_frame', self.video_slider.get())
+
+    def toggle_compareview(self):
+        self.widget['CompareViewButton'].toggle_button()
+        self.control['CompareViewButton'] = self.widget['CompareViewButton'].get()
         self.add_action('control', self.control)
         self.add_action('get_requested_video_frame', self.video_slider.get())
 
@@ -3454,4 +3308,3 @@ class GUI(tk.Tk):
 
     def disable_record_button(self):
         self.widget['TLRecButton'].disable_button()
-

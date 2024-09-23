@@ -2,12 +2,11 @@
 
 import time
 import torch
-from torchvision import transforms
 
 import rope.GUI as GUI
 import rope.VideoManager as VM
 import rope.Models as Models
-from rope.external.clipseg import CLIPDensePredT
+from rope.Dicts import DEFAULT_DATA
 
 resize_delay = 1
 mem_delay = 1
@@ -104,10 +103,6 @@ def coordinator():
             action.pop(0)
 
         elif action [0][0] == "parameters":
-            if action[0][1]["CLIPSwitch"]:
-                if not vm.clip_session:
-                    vm.clip_session = load_clip_model()
-
             vm.parameters = action[0][1]
             action.pop(0)
 
@@ -196,20 +191,18 @@ def coordinator():
     gui.after(1, coordinator)
     # print(time.time() - start)
 
-def load_clip_model():
-    # https://github.com/timojl/clipseg
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    clip_session = CLIPDensePredT(version='ViT-B/16', reduce_dim=64, complex_trans_conv=True)
-    # clip_session = CLIPDensePredTMasked(version='ViT-B/16', reduce_dim=64)
-    clip_session.eval();
-    clip_session.load_state_dict(torch.load('./models/rd64-uni-refined.pth'), strict=False)
-    clip_session.to(device)
-    return clip_session
-
 def run():
     global gui, vm, action, frame, r_frame, resize_delay, mem_delay
 
-    models = Models.Models()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        DEFAULT_DATA['ProvidersPriorityTextSelMode'] = 'CUDA'
+        DEFAULT_DATA['ProvidersPriorityTextSelModes'] = ['CUDA', 'TensorRT', 'TensorRT-Engine', 'CPU']
+    else:
+        DEFAULT_DATA['ProvidersPriorityTextSelMode'] = 'CPU'
+        DEFAULT_DATA['ProvidersPriorityTextSelModes'] = ['CPU']
+
+    models = Models.Models(device=device)
     gui = GUI.GUI(models)
     vm = VM.VideoManager(models)
 

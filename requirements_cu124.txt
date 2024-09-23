@@ -20,3 +20,6 @@ onnxruntime-gpu==1.19.2
 packaging==24.1
 tensorrt-cu12==10.4.0
 numexpr
+onnxsim
+kornia
+requests
