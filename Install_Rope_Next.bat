@@ -8,7 +8,6 @@ git pull origin
 git checkout -f -b main origin/main
 git reset --hard origin/main
 
-call PIP_cache_purge.bat
 call Update_Rope_Next_Stable.bat
 
 echo.
