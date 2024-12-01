@@ -3,11 +3,8 @@ if exist "activate.bat" (
     call activate.bat
 )
 git init
-git remote add origin https://github.com/Alucard24/Rope.git
+git remote add origin https://github.com/terry2776/Rope.git
 git pull origin
-git checkout -f -b development origin/development
-git reset --hard origin/development
-
 git checkout -f -b main origin/main
 git reset --hard origin/main
 
