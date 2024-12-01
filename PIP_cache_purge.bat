@@ -10,4 +10,4 @@ if exist ".\venv3.10\Scripts\activate.bat" (
 )
 
 REM Purge the pip cache of all tensorrt packages
-call "pip cache remove tensorrt*.*"
+pip cache remove tensorrt*.*
