@@ -18,7 +18,6 @@ pyvirtualcam==0.11.1
 psutil==6.0.0
 onnxruntime-gpu==1.19.2
 packaging==24.1
-tensorrt-cu12==10.4.0
 numexpr
 onnxsim
 kornia
